@@ -1,4 +1,4 @@
-Model file:  wei_prop_haz.cpp
+Model file:  weibull.txt
 [PROB]
 # Model: `Simulate Weibull parametric proportional hazard model`
   - Forward Kolmogorov differential equation

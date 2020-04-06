@@ -11,12 +11,16 @@ get_max_time <- function(simdat) {
     unlist(simdat[nrow(simdat), 2])
 }
 
+cfile_dir <- function() {
+  file.path(path.package("simtte"), "models")
+}
+
 # special function to read the static cache build.
 read_model_static_cache <- function(model) {
-    if (model == "weibull") {
-      mod_surv <- suppressMessages(mrgsolve::mread_cache("solve_mrgmodels/wei_prop_haz.cpp"))
-    } else if (model == "ms") {
-      mod_surv <- suppressMessages(mrgsolve::mread_cache("solve_mrgmodels/ms_prop_haz.cpp"))
+    model_file <- cfile_dir()
+
+    if (model == "weibull" | model == "ms") {
+      mod_surv <- mrgsolve::mread_cache(project = project, file = model_file)
     } else {
         stop("Model ", model, " must be ms, weibull.")
     }
