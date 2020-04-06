@@ -1,0 +1,18 @@
+Package: simtte
+Date: 06-04-2020
+Title: Simulation of time-to-event models
+Version: 0.1.0
+Author: Carlos S Traynor [aut, cre]
+Maintainer: Carlos S Traynor <c.traynor@warwick.ac.uk>
+Description: Simulates time-to-event datasets. Defines a model
+    using the hazard function and the Kolmogorov differential equation.
+    Samples a dataset using inverse transform sampling.
+    Default models for Weibull, M-splines and B-splines.
+License: GPL (>= 2)
+Encoding: UTF-8
+Depends: R (>= 3.5)
+Imports: dplyr, mrgsolve
+LazyData: true
+URL: https://github.com/csetraynor/simtte
+BugReports: https://github.com/csetraynor/simtte/issues
+RoxygenNote: 6.1.0
