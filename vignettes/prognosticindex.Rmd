@@ -1,0 +1,53 @@
+---
+title: "Explore the prognostic index"
+author: "Carlos Serra Traynor"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Explore the prognostic index}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(simtte)
+```
+
+```{r, SETTINGS-gg, include=TRUE}
+library(ggplot2)
+```
+
+## Simulating time-to-event data
+
+You can simulate a dataframe for the prognostic index under different conditions using `explore_pi_tq_surv`, for example:
+
+```{r pressure, echo=FALSE}
+log_hr = seq(-3, 3, by = 0.1)
+shape = seq(0.9, 1.1, by = 0.1)
+data_sim = explore_pi_tq_surv(pi = log_hr,
+                                      mu = -1,
+shape = shape, end_time = 200, type = "weibull")
+head(data_sim)
+```
+
+## Creating plots
+
+Using **ggplot** we can visualise the effect of the parameter `shape` on the inference of survival outcome.
+
+```{r}
+ggplot(data_sim , aes(x = exp(lp), y = survdiff_tq)) +
+  geom_line(aes(color =  shape, group = shape)) +
+  scale_x_log10() +
+  labs(x = "Hazard ratio", y = expression(Delta - "Survival at t" [50])) +
+  geom_vline(xintercept = 1, linetype = 2, size = 0.5) +
+  geom_hline(yintercept = 0, linetype = 2, size = 0.5) +
+  theme_bw()
+```
+

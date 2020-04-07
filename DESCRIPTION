@@ -1,18 +1,23 @@
 Package: simtte
 Date: 06-04-2020
 Title: Simulation of time-to-event models
-Version: 0.1.0
+Version: 1.0.0
 Author: Carlos S Traynor [aut, cre]
 Maintainer: Carlos S Traynor <c.traynor@warwick.ac.uk>
-Description: Simulates time-to-event datasets. Defines a model
-    using the hazard function and the Kolmogorov differential equation.
+Description: The goal of simtte is to fast simulate simple and complex time-to-event models also known as survival analysis.
+    It also allows user-defined time-to-event models.
+    Defines a model using the hazard function and the Kolmogorov differential equation.
     Samples a dataset using inverse transform sampling.
     Default models for Weibull, M-splines and B-splines.
 License: GPL (>= 2)
 Encoding: UTF-8
 Depends: R (>= 3.5)
 Imports: dplyr, mrgsolve
+Suggests: 
+    knitr,
+    rmarkdown
 LazyData: true
+VignetteBuilder: knitr
 URL: https://github.com/csetraynor/simtte
 BugReports: https://github.com/csetraynor/simtte/issues
 RoxygenNote: 6.1.0

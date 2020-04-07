@@ -17,12 +17,11 @@ cfile_dir <- function() {
 
 # special function to read the static cache build.
 read_model_static_cache <- function(model) {
-    model_file <- cfile_dir()
-
+    pkg_model_file <- cfile_dir()
     if (model == "weibull" | model == "ms") {
-      mod_surv <- mrgsolve::mread_cache(project = project, file = model_file)
+      mod_surv <- mrgsolve::mread_cache(model = model, project = pkg_model_file)
     } else {
-        stop("Model ", model, " must be ms, weibull.")
+        stop("Model ", model, " must be 'ms' or 'weibull' ")
     }
     return(mod_surv)
 }

@@ -25,10 +25,10 @@ simulate_survival_id <- function(simdat, id, id_var) {
     etime = get_tte(u, p)
     if (etime != -99) {
         eventtime = get_time(simdat, etime)
-        outdata <- tibble(time = eventtime, status = 1) %>% dplyr::mutate(ID = id)
+        outdata <-  dplyr::tibble(time = eventtime, status = 1) %>% dplyr::mutate(ID = id)
     } else {
         eventtime = get_max_time(simdat)
-        outdata <- tibble(time = eventtime, status = 0) %>% dplyr::mutate(ID = id)
+        outdata <-  dplyr::tibble(time = eventtime, status = 0) %>% dplyr::mutate(ID = id)
     }
     return(outdata)
 }

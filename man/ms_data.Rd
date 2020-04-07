@@ -9,7 +9,7 @@
   \item{mu}{intercept parameter}
   \item{basis}{basis matrix}
   \item{coefs}{coefficients}
-  \item{time}{simulated time}
+  \item{time}{time to simulate}
   ...
 }}
 \usage{
