@@ -18,8 +18,9 @@ Model file:  weibull.txt
   double eta = exp(mu + lp);
 
 [ODE]
-  if(SOLVERTIME > 10E-10) {
-    dxdt_p11 =  - p11 * shape * pow (SOLVERTIME * eta, shape - 1) * eta; // note af * time = caf
+  if(SOLVERTIME >= 1E-1) {
+    dxdt_p11 =  - p11 * shape * pow (SOLVERTIME, shape - 1) * eta;
   } else {
-    dxdt_p11 = 0;
+    dxdt_p11 = - p11 * eta; // approximate via exponential model
   }
+
