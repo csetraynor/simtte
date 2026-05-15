@@ -1,52 +1,56 @@
-
-<!-- README.md is generated from README.Rmd. Please edit that file -->
-simtte
-======
+# simtte
 
 <!-- badges: start -->
 <!-- badges: end -->
-The goal of simtte is to fast simulate simple and complex time-to-event models also known as survival analysis. It also allows user-defined time-to-event models via the awesome package [**mrgsolve**](https://github.com/metrumresearchgroup/mrgsolve).
 
-Installation
-------------
+**simtte** simulates time-to-event (survival) datasets for clinical trial
+design and analysis. It supports Weibull and flexible M-spline baseline
+hazard models, using [mrgsolve](https://github.com/metrumresearchgroup/mrgsolve)
+as the ODE solver backend and inverse transform sampling to generate event
+times.
 
-You can install the development version from [GitHub](https://github.com/) with:
+## Installation
 
-``` r
+### Prerequisites
+
+**simtte** depends on **mrgsolve**, which requires a working C++ compiler:
+
+- **Windows**: Install [Rtools](https://cran.r-project.org/bin/windows/Rtools/)
+- **macOS**: Install Xcode command line tools (`xcode-select --install`)
+- **Linux**: Install `g++` via your package manager
+
+### From GitHub
+
+```r
 # install.packages("devtools")
 devtools::install_github("csetraynor/simtte")
 ```
 
-Example
--------
+## Quick Start
 
-This is a basic example which shows you how to solve a common problem:
-
-``` r
+```r
 library(simtte)
-# Load M-splines data example
-data("ms_data")
-mu <- ms_data$mu
-basis <- ms_data$basis
-coefs <- ms_data$coefs
-time <- ms_data$time
-# Simulate prognostic index, linear predictor
-lp <- matrix(runif(nrow(basis)),  nrow = nrow(basis))
 
-# simulate M-splines model
-sim_tte(pi = lp, mu = mu, basis = basis, coefs = coefs, time = time, type = "ms", end_time = 100)
-#> Compiling ms ... done.
-#> # A tibble: 299 x 4
-#>    sim_time sim_status    ID    lp
-#>       <dbl>      <dbl> <int> <dbl>
-#>  1    1.03           1     1 0.406
-#>  2    2.59           1     2 0.696
-#>  3    6.73           0     3 0.840
-#>  4    3.50           1     4 0.973
-#>  5    6.73           0     5 0.935
-#>  6    0.745          1     6 0.290
-#>  7    0.562          1     7 0.594
-#>  8    2.24           1     8 0.299
-#>  9    6.73           0     9 0.706
-#> 10    6.73           0    10 0.735
-#> # b
+# Weibull simulation
+set.seed(42)
+lp <- matrix(rnorm(20, 0, 0.5), nrow = 20)
+result <- sim_tte(
+  pi = lp, mu = -1, coefs = 1.1,
+  time = seq(0.1, 50, by = 0.1),
+  type = "weibull", end_time = 50
+)
+head(result)
+
+# M-splines simulation
+data("ms_data")
+lp <- matrix(runif(nrow(ms_data$basis)), nrow = nrow(ms_data$basis))
+result <- sim_tte(
+  pi = lp, mu = ms_data$mu, basis = ms_data$basis,
+  coefs = ms_data$coefs, time = ms_data$time, type = "ms"
+)
+head(result)
+```
+
+## License
+
+GPL (>= 2)

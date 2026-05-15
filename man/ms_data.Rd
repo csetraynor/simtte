@@ -3,19 +3,26 @@
 \docType{data}
 \name{ms_data}
 \alias{ms_data}
-\title{Simulated data for demonstration of M-splines model}
-\format{list
+\title{Simulated Data for M-Splines Model Demonstration}
+\format{
+A list with 4 elements:
 \describe{
-  \item{mu}{intercept parameter}
-  \item{basis}{basis matrix}
-  \item{coefs}{coefficients}
-  \item{time}{time to simulate}
-  ...
-}}
+  \item{mu}{Numeric scalar. Intercept parameter.}
+  \item{basis}{Numeric matrix. M-spline basis matrix with rows
+    corresponding to time points and columns to basis functions.}
+  \item{coefs}{Numeric vector. Coefficients for each basis function.}
+  \item{time}{Numeric vector. Time points corresponding to the rows
+    of the basis matrix.}
+}
+}
+\source{
+Simulated example data.
+}
 \usage{
 ms_data
 }
 \description{
-Simulated data for demonstration of M-splines model
+A list containing parameters for an M-spline survival model,
+suitable for use with \code{\link{sim_tte}}.
 }
 \keyword{datasets}

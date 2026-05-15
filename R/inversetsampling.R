@@ -1,34 +1,52 @@
-#' Inverse transform sampling
-#' Internal function to coduct inverse transform sampling
-#' specific to use with the simulated survival datasets in \code{sim_surv_df}.
-#' @param simdat simulated dataset.
-#' @param covs covariate dataset.
-#' @param id ID of the patient must be named id if no id_var is passed
-#' @param id_var optional id var if id is not named id
-simulate_survival <- function(simdat, id, covs, id_var) {
+#' Inverse Transform Sampling for a Single Subject
+#'
+#' Internal function that performs inverse transform sampling on
+#' survival probabilities to generate an event time for a single
+#' subject.
+#'
+#' @param simdat Data frame of simulated survival probabilities
+#'   for one subject.
+#' @param covs Data frame of covariates for one subject.
+#' @param id Subject identifier.
+#' @param id_var Character string. Name of the ID variable.
+#'
+#' @return A data frame with event time and status, merged with
+#'   covariate data.
+#' @noRd
+#' @importFrom stats runif
+.simulate_survival <- function(simdat, id, covs, id_var) {
     if (missing(id_var)) {
         id_var <- "ID"
     }
-    newdat <- simulate_survival_id(simdat, id, id_var)
+    newdat <- .simulate_survival_id(simdat, id, id_var)
     dplyr::left_join(newdat, covs, by = id_var)
 }
 
-#' Simulate survival internal
-#' Workhorse to conduct inverse transform sampling.
-#' @param simdat simulated dataset.
-#' @param id ID of the patient must be named id if no id_var is passed
-#' @param id_var optional id var if id is not named id
+#' Workhorse for Inverse Transform Sampling
+#'
+#' Draws a uniform random variate and finds the time at which the
+#' survival probability crosses below that value.
+#'
+#' @param simdat Data frame with survival probabilities for one subject.
+#' @param id Subject identifier.
+#' @param id_var Character string. Name of the ID variable.
+#'
+#' @return A tibble with columns \code{time}, \code{status}, and
+#'   the ID variable.
+#' @noRd
 #' @importFrom stats runif
-simulate_survival_id <- function(simdat, id, id_var) {
-    u <- runif(1)  ## sample u for inverse transform sampling
+.simulate_survival_id <- function(simdat, id, id_var) {
+    u <- stats::runif(1)
     p <- simdat$p11
-    etime = get_tte(u, p)
+    etime <- .get_tte(u, p)
     if (etime != -99) {
-        eventtime = get_time(simdat, etime)
-        outdata <-  dplyr::tibble(time = eventtime, status = 1) %>% dplyr::mutate(ID = id)
+        eventtime <- .get_time(simdat, etime)
+        outdata <- dplyr::tibble(time = eventtime, status = 1) %>%
+            dplyr::mutate(ID = id)
     } else {
-        eventtime = get_max_time(simdat)
-        outdata <-  dplyr::tibble(time = eventtime, status = 0) %>% dplyr::mutate(ID = id)
+        eventtime <- .get_max_time(simdat)
+        outdata <- dplyr::tibble(time = eventtime, status = 0) %>%
+            dplyr::mutate(ID = id)
     }
     return(outdata)
 }

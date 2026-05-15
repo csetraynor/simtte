@@ -2,52 +2,90 @@
 % Please edit documentation in R/simtte.R
 \name{sim_tte}
 \alias{sim_tte}
-\title{Simulate time-to-event
-Main function of \code{simtte}. Simulates a time-to-event dataset,
-also known as survival dataset. It can simulate parametric models Weibull and exponential
-and splines models.}
+\title{Simulate Time-to-Event Data}
 \usage{
-sim_tte(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
-  time = 100, end_time, type = "weibull", ...)
+sim_tte(
+  pi,
+  log_pi = TRUE,
+  mu = -3,
+  coefs = 0,
+  basis = NULL,
+  time = 100,
+  end_time,
+  type = "weibull",
+  ...
+)
 }
 \arguments{
-\item{pi}{prognostic index in the relative hazard for each individual.
-Given a matrix of measurements X and a vector of hazard coefficients b,
-the \code{pi} is given by the matrix multiplication.
-assuming a linear hazard model. \code{pi} is also known as linear predictor.}
+\item{pi}{Numeric matrix or vector. Prognostic index (linear predictor)
+for each individual. Given a covariate matrix X and coefficient
+vector b, \code{pi = X \%*\% b}.}
 
-\item{log_pi}{Is the prognostic index in the log-scale defulat \code{TRUE}.}
+\item{log_pi}{Logical; is the prognostic index already on the log scale?
+Default \code{TRUE}.}
 
-\item{mu}{The intercept of the model for Weibull and ex}
+\item{mu}{Numeric scalar. Intercept parameter of the model. Default
+\code{-3}.}
 
-\item{coefs}{For M-splines and B-slines model the coefficient of each spline.}
+\item{coefs}{Numeric vector. For M-spline models, the coefficients of
+each spline basis function. For Weibull models, the shape parameter
+(scalar).}
 
-\item{basis}{the basis matrix for splines models.}
+\item{basis}{Numeric matrix. Basis matrix for M-spline models.
+Ignored for Weibull models. Default \code{NULL}.}
 
-\item{time}{For M-splines the times corresponding to the basis matrix, ignored for the Weibull.}
+\item{time}{Numeric vector. For M-spline models, the time points
+corresponding to rows of the basis matrix. For Weibull models,
+used only to determine \code{end_time} if not supplied. Default
+\code{100}.}
 
-\item{end_time}{Administrative censoring time, or \code{max(times)}.}
+\item{end_time}{Numeric scalar. Administrative censoring time.
+Defaults to \code{max(time)}.}
 
-\item{type}{Either type Weibull or M-splines.}
+\item{type}{Character string. Model type: \code{"weibull"} or
+\code{"ms"} (M-splines). Default \code{"weibull"}.}
 
-\item{...}{Parameters passed to mrgsolve mrgsim function.}
+\item{...}{Additional arguments passed to
+\code{\link[mrgsolve]{mrgsim}}.}
+}
+\value{
+A data frame with columns:
+\describe{
+  \item{sim_time}{Simulated event or censoring time.}
+  \item{sim_status}{Event indicator (1 = event, 0 = censored).}
+  \item{ID}{Subject identifier.}
+  \item{lp}{Log prognostic index (linear predictor).}
+}
 }
 \description{
-Simulate time-to-event
-Main function of \code{simtte}. Simulates a time-to-event dataset,
-also known as survival dataset. It can simulate parametric models Weibull and exponential
-and splines models.
+Main function of \pkg{simtte}. Simulates a time-to-event dataset
+(survival dataset) using either a Weibull parametric model or an
+M-spline flexible baseline hazard model. Event times are generated
+via inverse transform sampling from the cumulative hazard function
+computed by \pkg{mrgsolve}.
 }
 \examples{
+\donttest{
 data("ms_data")
 mu <- ms_data$mu
 basis <- ms_data$basis
 coefs <- ms_data$coefs
 time <- ms_data$time
-lp <- matrix(runif(nrow(basis)),  nrow = nrow(basis))
+lp <- matrix(runif(nrow(basis)), nrow = nrow(basis))
 wei_sim <- sim_tte(pi = lp, mu = -1, coefs = 1.1,
- time = time, type = "weibull", obs.only = FALSE,
- obs.aug = TRUE, delta = 0.5, end_time = 100)
+  time = time, type = "weibull", end_time = 100)
 ms_sim <- sim_tte(pi = lp, mu = mu, basis = basis,
- coefs = coefs, time = time, type = "ms")
+  coefs = coefs, time = time, type = "ms")
+}
+}
+\references{
+Bender R, Augustin T, Blettner M (2005). Generating survival times to
+simulate Cox proportional hazards models. \emph{Statistics in Medicine},
+24(11), 1713--1723. \doi{10.1002/sim.2059}
+
+Royston P, Parmar MKB (2002). Flexible parametric proportional-hazards
+and proportional-odds models for censored survival data, with application
+to prognostic modelling and estimation of treatment effects.
+\emph{Statistics in Medicine}, 21(15), 2175--2197.
+\doi{10.1002/sim.1203}
 }

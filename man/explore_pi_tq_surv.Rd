@@ -2,44 +2,50 @@
 % Please edit documentation in R/simtte.R
 \name{explore_pi_tq_surv}
 \alias{explore_pi_tq_surv}
-\title{Simulate relation of prognostic index and quantile times
-The function allows calculating the difference in survival between
-different log hazard ratios. Useful for understanding distributions
-in a quantile non-classical way.}
+\title{Explore Prognostic Index and Quantile Survival Times}
 \usage{
-explore_pi_tq_surv(q = 0.5, pi, mu, shape, type, times, basehaz,
-  end_time, ...)
+explore_pi_tq_surv(q = 0.5, pi, mu, shape, type, times, basehaz, end_time, ...)
 }
 \arguments{
-\item{q}{quantile default to 0.5}
+\item{q}{Numeric scalar. Survival quantile of interest (default 0.5,
+i.e. median survival).}
 
-\item{pi}{the prognostic index.}
+\item{pi}{Numeric vector. Prognostic index values to evaluate.}
 
-\item{mu}{intercept parameter}
+\item{mu}{Numeric scalar. Intercept parameter.}
 
-\item{shape}{shape parameter}
+\item{shape}{Numeric scalar or vector. Shape parameter(s) for the
+Weibull model.}
 
-\item{type}{type of model Weibull, splines.}
+\item{type}{Character string. Model type: \code{"weibull"} or
+\code{"ms"}.}
 
-\item{times}{times to simulate}
+\item{times}{Numeric vector. Time points (M-spline models).}
 
-\item{basehaz}{basehazard calculated.}
+\item{basehaz}{Numeric matrix. Baseline hazard (M-spline models).}
 
-\item{end_time}{the censoring time.}
+\item{end_time}{Numeric scalar. Administrative censoring time.}
 
-\item{...}{passed to mrgsolve mrgsim.}
+\item{...}{Additional arguments passed to \code{\link[mrgsolve]{mrgsim}}.}
+}
+\value{
+A data frame including columns \code{lp}, \code{p11},
+  \code{survdiff_tq}, and model parameters.
 }
 \description{
-Simulate relation of prognostic index and quantile times
-The function allows calculating the difference in survival between
-different log hazard ratios. Useful for understanding distributions
-in a quantile non-classical way.
+Calculates the difference in survival probability at a given quantile
+time across a range of prognostic index values. Useful for understanding
+how different log hazard ratios affect survival outcomes.
 }
 \examples{
-data_sim = explore_pi_tq_surv(pi = seq(-3, 3, by = 0.1),
- mu = -1,
-shape = 1.1,
- end_time = 200,
-  type = "weibull")
+\donttest{
+data_sim <- explore_pi_tq_surv(
+  pi = seq(-3, 3, by = 0.1),
+  mu = -1,
+  shape = 1.1,
+  end_time = 200,
+  type = "weibull"
+)
 plot(survdiff_tq ~ lp, data = data_sim)
+}
 }

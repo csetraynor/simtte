@@ -2,29 +2,49 @@
 % Please edit documentation in R/simtte.R
 \name{sim_tte_df}
 \alias{sim_tte_df}
-\title{Simulate time-to-event dataframe
-This function can be used to use inverse transform sampling from a
-cosutmised time-to-event model implemented in **mrgsolve**.
-One only needs to pass the dataframe and the state variable
-the probability to remain alive, by default p11.}
+\title{Simulate Time-to-Event Data from a Custom mrgsolve Output}
 \usage{
 sim_tte_df(dat, surv_var = "p11", id_var = "ID", xdata = NULL)
 }
 \arguments{
-\item{dat}{The mrgsim output dataframe.}
+\item{dat}{Data frame. Output from \code{\link[mrgsolve]{mrgsim}}
+containing at minimum columns for time, subject ID, and survival
+probability.}
 
-\item{surv_var}{the state probability to remain with no event , default to p11.}
+\item{surv_var}{Character string. Name of the column containing the
+survival probability (probability of remaining event-free). Default
+\code{"p11"}.}
 
-\item{id_var}{ID vaiable default to ID.}
+\item{id_var}{Character string. Name of the subject ID column.
+Default \code{"ID"}.}
 
-\item{xdata}{additional covariate data to pass to the final dataframe.
-Must have the same \code{id_var} as \code{dat}.
-@export}
+\item{xdata}{Optional data frame of additional covariates to merge
+into the output. Must contain a column matching \code{id_var}.}
+}
+\value{
+A data frame with columns:
+\describe{
+  \item{sim_time}{Simulated event or censoring time.}
+  \item{sim_status}{Event indicator (1 = event, 0 = censored).}
+  \item{ID}{Subject identifier.}
+}
+Plus any additional columns from \code{xdata}.
 }
 \description{
-Simulate time-to-event dataframe
-This function can be used to use inverse transform sampling from a
-cosutmised time-to-event model implemented in **mrgsolve**.
-One only needs to pass the dataframe and the state variable
-the probability to remain alive, by default p11.
+Applies inverse transform sampling to a data frame produced by an
+\pkg{mrgsolve} simulation that contains a survival probability column.
+This function is useful when you have a custom time-to-event model
+implemented in \pkg{mrgsolve} and want to generate event times.
+}
+\examples{
+\donttest{
+# Create a mock survival probability data frame
+mock_dat <- data.frame(
+  ID = rep(1:3, each = 100),
+  time = rep(seq(0.1, 10, length.out = 100), 3),
+  p11 = rep(exp(-0.3 * seq(0.1, 10, length.out = 100)), 3)
+)
+result <- sim_tte_df(mock_dat)
+head(result)
+}
 }
