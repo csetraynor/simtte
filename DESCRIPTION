@@ -23,8 +23,7 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown,
-    ggplot2
+    rmarkdown
 VignetteBuilder: knitr
 URL: https://github.com/csetraynor/simtte
 BugReports: https://github.com/csetraynor/simtte/issues
