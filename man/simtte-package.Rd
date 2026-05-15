@@ -17,7 +17,7 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Carlos S Traynor \email{carlos.traynor.qcp@gmail.com}
+\strong{Maintainer}: Carlos Traynor \email{carlos.traynor.qcp@gmail.com}
 
 }
 \keyword{internal}

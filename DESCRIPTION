@@ -18,6 +18,7 @@ LazyData: true
 Depends: R (>= 4.0.0)
 Imports:
     dplyr,
+    magrittr,
     mrgsolve
 Suggests:
     testthat (>= 3.0.0),
@@ -28,5 +29,4 @@ VignetteBuilder: knitr
 URL: https://github.com/csetraynor/simtte
 BugReports: https://github.com/csetraynor/simtte/issues
 RoxygenNote: 7.3.2
-SystemRequirements: C++ compiler (for mrgsolve model compilation)
 Config/testthat/edition: 3
