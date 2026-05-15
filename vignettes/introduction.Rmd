@@ -1,0 +1,107 @@
+---
+title: "Getting Started with simtte"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with simtte}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## Introduction
+
+The **simtte** package simulates time-to-event (survival) datasets for
+clinical trial design and analysis. It supports:
+ 
+- **Weibull** parametric survival models
+- **Flexible M-spline** baseline hazard models (Royston-Parmar style)
+
+Event times are generated using **inverse transform sampling** from the
+cumulative hazard function, computed via the **mrgsolve** ODE solver backend.
+
+## Statistical Framework
+
+### Weibull Model
+
+The Weibull hazard function is:
+
+$$h(t) = \lambda \cdot \gamma \cdot t^{\gamma - 1}$$
+
+where $\lambda = \exp(\mu + \mathbf{x}'\boldsymbol{\beta})$ is the scale
+and $\gamma$ is the shape parameter.
+
+### M-Spline Model
+
+For the flexible model, the baseline hazard is represented as a linear
+combination of M-spline basis functions, allowing complex hazard shapes.
+
+### Inverse Transform Sampling
+
+Given a survival function $S(t)$, we draw $U \sim \text{Uniform}(0, 1)$
+and find the time $t^*$ such that $S(t^*) = U$. The package solves the
+Kolmogorov forward equation numerically via **mrgsolve** and then applies
+this sampling scheme.
+
+## Basic Workflow
+
+```{r setup}
+library(simtte)
+```
+
+### Weibull Example
+
+```{r weibull-example, eval = FALSE}
+set.seed(42)
+lp <- matrix(rnorm(50, 0, 0.5), nrow = 50)
+result <- sim_tte(
+  pi = lp,
+  mu = -1,
+  coefs = 1.1,
+  time = seq(0.1, 100, by = 0.1),
+  type = "weibull",
+  end_time = 100
+)
+head(result)
+```
+
+### M-Splines Example
+
+```{r ms-example, eval = FALSE}
+data("ms_data")
+lp <- matrix(runif(nrow(ms_data$basis)), nrow = nrow(ms_data$basis))
+result <- sim_tte(
+  pi = lp,
+  mu = ms_data$mu,
+  basis = ms_data$basis,
+  coefs = ms_data$coefs,
+  time = ms_data$time,
+  type = "ms"
+)
+head(result)
+```
+
+## Output Structure
+
+The output is a data frame with columns:
+
+| Column       | Description                              |
+|-------------|------------------------------------------|
+| `sim_time`  | Simulated event or censoring time        |
+| `sim_status`| Event indicator (1 = event, 0 = censored)|
+| `ID`        | Subject identifier                        |
+| `lp`        | Linear predictor (log hazard ratio)       |
+
+## References
+
+- Bender R, Augustin T, Blettner M (2005). Generating survival times to
+  simulate Cox proportional hazards models. *Statistics in Medicine*,
+  24(11), 1713-1723.
+- Royston P, Parmar MKB (2002). Flexible parametric proportional-hazards
+  and proportional-odds models for censored survival data. *Statistics in
+  Medicine*, 21(15), 2175-2197.

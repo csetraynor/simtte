@@ -1,0 +1,10 @@
+test_that("ms_data loads correctly", {
+  data("ms_data", package = "simtte")
+  expect_type(ms_data, "list")
+  expect_true(all(c("mu", "basis", "coefs", "time") %in% names(ms_data)))
+  expect_true(is.numeric(ms_data$mu))
+  expect_true(is.matrix(ms_data$basis))
+  expect_true(is.numeric(ms_data$coefs))
+  expect_true(is.numeric(ms_data$time))
+  expect_equal(ncol(ms_data$basis), length(ms_data$coefs))
+})

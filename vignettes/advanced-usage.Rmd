@@ -1,0 +1,89 @@
+---
+title: "Advanced Simulation Scenarios"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Advanced Simulation Scenarios}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(simtte)
+```
+
+## Exploring the Prognostic Index
+
+The `explore_pi_tq_surv()` function allows you to understand how the
+prognostic index (linear predictor) affects survival at a given quantile.
+
+```{r explore-pi, eval = FALSE}
+data_sim <- explore_pi_tq_surv(
+  pi = seq(-3, 3, by = 0.1),
+  mu = -1,
+  shape = seq(0.9, 1.1, by = 0.1),
+  end_time = 200,
+  type = "weibull"
+)
+head(data_sim)
+```
+
+### Visualisation
+
+```{r plot-pi, eval = FALSE}
+library(ggplot2)
+ggplot(data_sim, aes(x = exp(lp), y = survdiff_tq)) +
+  geom_line(aes(color = factor(shape), group = shape)) +
+  scale_x_log10() +
+  labs(
+    x = "Hazard Ratio",
+    y = expression(Delta ~ "Survival at" ~ t[50]),
+    color = "Shape"
+  ) +
+  geom_vline(xintercept = 1, linetype = 2) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()
+```
+
+## Custom mrgsolve Models with sim_tte_df
+
+If you have a custom mrgsolve model that outputs a survival probability
+column, you can use `sim_tte_df()` directly to perform inverse transform
+sampling on the output:
+ 
+```{r custom, eval = FALSE}
+# Assume 'mrg_output' is the output of an mrgsim() call with a 'p11' column
+# result <- sim_tte_df(mrg_output, surv_var = "p11", id_var = "ID")
+```
+
+## Multiple Treatment Arms
+
+You can simulate different treatment arms by specifying different
+prognostic indices:
+
+```{r arms, eval = FALSE}
+set.seed(42)
+n_per_arm <- 50
+times <- seq(0.1, 50, by = 0.1)
+
+# Control arm
+lp_ctrl <- matrix(rep(0, n_per_arm), nrow = n_per_arm)
+ctrl <- sim_tte(pi = lp_ctrl, mu = -1, coefs = 1.1,
+  time = times, type = "weibull", end_time = 50)
+ctrl$arm <- "Control"
+
+# Treatment arm (lower hazard)
+lp_trt <- matrix(rep(-0.5, n_per_arm), nrow = n_per_arm)
+trt <- sim_tte(pi = lp_trt, mu = -1, coefs = 1.1,
+  time = times, type = "weibull", end_time = 50)
+trt$arm <- "Treatment"
+
+combined <- rbind(ctrl, trt)
+head(combined)
+```
