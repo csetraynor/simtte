@@ -7,6 +7,9 @@
 The single NOTE is "checking for future file timestamps" which is a
 system clock issue unrelated to the package.
 
+Note: Local check shows a WARNING about 'qpdf' not being available. 
+This is a local system dependency issue and does not appear on CRAN's check infrastructure.
+
 ## Response to CRAN reviewer comments (resubmission)
 
 ### Missing \value tags in .Rd files
