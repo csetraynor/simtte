@@ -37,14 +37,12 @@ This function is useful when you have a custom time-to-event model
 implemented in \pkg{mrgsolve} and want to generate event times.
 }
 \examples{
-\donttest{
-# Create a mock survival probability data frame
+# Create a mock survival probability data frame (no mrgsolve required)
 mock_dat <- data.frame(
-  ID = rep(1:3, each = 100),
-  time = rep(seq(0.1, 10, length.out = 100), 3),
-  p11 = rep(exp(-0.3 * seq(0.1, 10, length.out = 100)), 3)
+  ID = rep(1:3, each = 50),
+  time = rep(seq(0.1, 10, length.out = 50), 3),
+  p11 = rep(exp(-0.3 * seq(0.1, 10, length.out = 50)), 3)
 )
 result <- sim_tte_df(mock_dat)
 head(result)
-}
 }

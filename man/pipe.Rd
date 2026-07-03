@@ -3,6 +3,11 @@
 \name{\%>\%}
 \alias{\%>\%}
 \title{Pipe operator}
+\value{
+The result of applying the right-hand side function to the
+  left-hand side object.
+  See \code{\link[magrittr]{\%>\%}} for details.
+}
 \description{
 See \code{magrittr::\link[magrittr:pipe]{\%>\%}} for details.
 }

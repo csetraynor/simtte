@@ -65,7 +65,17 @@ via inverse transform sampling from the cumulative hazard function
 computed by \pkg{mrgsolve}.
 }
 \examples{
+# Fast Weibull example with a small dataset
+set.seed(1)
+lp <- matrix(rnorm(5, 0, 0.5), nrow = 5)
+result <- sim_tte(
+  pi = lp, mu = -1, coefs = 1.1,
+  time = seq(0.1, 10, by = 0.5),
+  type = "weibull", end_time = 10
+)
+head(result)
 \donttest{
+# Larger examples using bundled ms_data
 data("ms_data")
 mu <- ms_data$mu
 basis <- ms_data$basis

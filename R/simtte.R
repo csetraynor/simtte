@@ -50,7 +50,17 @@
 #'
 #' @export
 #' @examples
+#' # Fast Weibull example with a small dataset
+#' set.seed(1)
+#' lp <- matrix(rnorm(5, 0, 0.5), nrow = 5)
+#' result <- sim_tte(
+#'   pi = lp, mu = -1, coefs = 1.1,
+#'   time = seq(0.1, 10, by = 0.5),
+#'   type = "weibull", end_time = 10
+#' )
+#' head(result)
 #' \donttest{
+#' # Larger examples using bundled ms_data
 #' data("ms_data")
 #' mu <- ms_data$mu
 #' basis <- ms_data$basis
@@ -139,16 +149,14 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #'
 #' @export
 #' @examples
-#' \donttest{
-#' # Create a mock survival probability data frame
+#' # Create a mock survival probability data frame (no mrgsolve required)
 #' mock_dat <- data.frame(
-#'   ID = rep(1:3, each = 100),
-#'   time = rep(seq(0.1, 10, length.out = 100), 3),
-#'   p11 = rep(exp(-0.3 * seq(0.1, 10, length.out = 100)), 3)
+#'   ID = rep(1:3, each = 50),
+#'   time = rep(seq(0.1, 10, length.out = 50), 3),
+#'   p11 = rep(exp(-0.3 * seq(0.1, 10, length.out = 50)), 3)
 #' )
 #' result <- sim_tte_df(mock_dat)
 #' head(result)
-#' }
 sim_tte_df <- function(dat,
                        surv_var = "p11",
                        id_var = "ID",
@@ -251,15 +259,25 @@ sim_tte_df <- function(dat,
 #'
 #' @export
 #' @examples
-#' \donttest{
+#' # Small fast example
 #' data_sim <- explore_pi_tq_surv(
+#'   pi = seq(-1, 1, by = 0.5),
+#'   mu = -1,
+#'   shape = 1.1,
+#'   end_time = 10,
+#'   type = "weibull"
+#' )
+#' head(data_sim)
+#' \donttest{
+#' # Larger range example
+#' data_sim2 <- explore_pi_tq_surv(
 #'   pi = seq(-3, 3, by = 0.1),
 #'   mu = -1,
 #'   shape = 1.1,
 #'   end_time = 200,
 #'   type = "weibull"
 #' )
-#' plot(survdiff_tq ~ lp, data = data_sim)
+#' plot(survdiff_tq ~ lp, data = data_sim2)
 #' }
 explore_pi_tq_surv <- function(q = 0.5,
                                pi,

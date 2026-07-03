@@ -21,3 +21,4 @@
 ^inst/maintenance$
 ^inst/validation$
 .*\.tar\.gz$
+^\.claude$

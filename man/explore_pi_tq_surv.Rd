@@ -38,14 +38,24 @@ time across a range of prognostic index values. Useful for understanding
 how different log hazard ratios affect survival outcomes.
 }
 \examples{
-\donttest{
+# Small fast example
 data_sim <- explore_pi_tq_surv(
+  pi = seq(-1, 1, by = 0.5),
+  mu = -1,
+  shape = 1.1,
+  end_time = 10,
+  type = "weibull"
+)
+head(data_sim)
+\donttest{
+# Larger range example
+data_sim2 <- explore_pi_tq_surv(
   pi = seq(-3, 3, by = 0.1),
   mu = -1,
   shape = 1.1,
   end_time = 200,
   type = "weibull"
 )
-plot(survdiff_tq ~ lp, data = data_sim)
+plot(survdiff_tq ~ lp, data = data_sim2)
 }
 }
