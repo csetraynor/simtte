@@ -28,7 +28,7 @@
 #' @return Character path.
 #' @noRd
 .cfile_dir <- function() {
-    file.path(path.package("simtte"), "models")
+    system.file("models", package = "simtte")
 }
 
 #' Read and cache mrgsolve model
