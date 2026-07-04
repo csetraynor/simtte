@@ -1,16 +1,6 @@
-## R CMD check results
+## Resubmission
 
-0 errors | 0 warnings | 1 note
-
-* This is a new submission.
-
-The single NOTE is "checking for future file timestamps" which is a
-system clock issue unrelated to the package.
-
-Note: Local check shows a WARNING about 'qpdf' not being available. 
-This is a local system dependency issue and does not appear on CRAN's check infrastructure.
-
-## Response to CRAN reviewer comments (resubmission)
+This is a resubmission addressing CRAN reviewer comments.
 
 ### Missing \value tags in .Rd files
 
@@ -33,10 +23,14 @@ All three exported functions (`sim_tte`, `sim_tte_df`,
 Longer illustrative examples are retained inside `\donttest{}`.
 
 ## Test environments
-
 * local Ubuntu 20.04.6 LTS, R 4.4.2
-* R CMD check --as-cran
+* local macOS (aarch64, Apple Silicon), R 4.6.0
+* win-builder (R-devel)
+
+## R CMD check results
+0 errors | 0 warnings | 0 notes
 
 ## Downstream dependencies
-
 None (new package).
+
+

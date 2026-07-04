@@ -1,6 +1,6 @@
 Package: simtte
 Title: Simulate Time-to-Event Data Using Weibull and Spline Models
-Version: 1.0.0
+Version: 1.0.1
 Language: en-US
 Authors@R: person("Carlos", "Traynor", email = "carlos.traynor.qcp@gmail.com",
     role = c("aut", "cre"))

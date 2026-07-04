@@ -1,3 +1,9 @@
+# simtte 1.0.1
+
+* Fixed issues from CRAN review:
+  * Added `\value` tag to `pipe.Rd` documenting the return value of the pipe operator.
+  * Reduced example run times and unwrapped short examples from `\donttest{}` so they run during automated checks; examples now execute in under 5 seconds.
+
 # simtte 1.0.0
 
 * Initial CRAN release.
