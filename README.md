@@ -1,25 +1,52 @@
-# simtte
+# simtte <img src="man/figures/logo.png" align="right" height="139" alt="" />
 
 <!-- badges: start -->
+[![CRAN status](https://www.r-pkg.org/badges/version/simtte)](https://CRAN.R-project.org/package=simtte)
+[![CRAN downloads](https://cranlogs.r-pkg.org/badges/simtte)](https://CRAN.R-project.org/package=simtte)
+[![R-CMD-check](https://github.com/csetraynor/simtte/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/csetraynor/simtte/actions/workflows/R-CMD-check.yaml)
+[![License: GPL (>= 2)](https://img.shields.io/badge/License-GPL%20%28%3E%3D%202%29-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 <!-- badges: end -->
 
-**simtte** simulates time-to-event (survival) datasets for clinical trial
-design and analysis. It supports Weibull and flexible M-spline baseline
-hazard models, using [mrgsolve](https://github.com/metrumresearchgroup/mrgsolve)
-as the ODE solver backend and inverse transform sampling to generate event
-times.
+**simtte** is an R package for simulating time-to-event (survival) datasets
+for clinical trial design and analysis. It supports Weibull parametric models
+and flexible M-spline baseline hazard models, using
+[mrgsolve](https://github.com/metrumresearchgroup/mrgsolve) as the ODE solver
+backend and inverse transform sampling to generate event times.
+
+## Overview
+
+Clinical trial simulations often require realistic survival datasets under a
+variety of hazard shapes — from simple exponential or Weibull models to
+non-proportional hazards with complex baseline hazard functions. **simtte**
+addresses this by:
+
+- Providing a unified interface for Weibull and flexible M-spline survival
+  simulation.
+- Leveraging **mrgsolve**'s compiled ODE solver for efficient, numerically
+  stable computation of cumulative hazard functions.
+- Supporting user-defined mrgsolve models via `sim_tte_df()` for fully custom
+  time-to-event simulation pipelines.
+- Implementing the inverse transform sampling algorithm (Bender et al., 2005)
+  for exact event-time generation.
 
 ## Installation
 
-### Prerequisites
+### From CRAN
 
-**simtte** depends on **mrgsolve**, which requires a working C++ compiler:
+```r
+install.packages("simtte")
+```
 
-- **Windows**: Install [Rtools](https://cran.r-project.org/bin/windows/Rtools/)
-- **macOS**: Install Xcode command line tools (`xcode-select --install`)
-- **Linux**: Install `g++` via your package manager
+### From GitHub (development version)
 
-### From GitHub
+**simtte** depends on **mrgsolve**, which requires a working C++ compiler.
+Install the appropriate toolchain for your platform before proceeding:
+
+| Platform | Requirement |
+|----------|-------------|
+| Windows  | [Rtools](https://cran.r-project.org/bin/windows/Rtools/) |
+| macOS    | Xcode command line tools: `xcode-select --install` |
+| Linux    | `g++` via your package manager (e.g., `apt install g++`) |
 
 ```r
 # install.packages("devtools")
@@ -28,28 +55,157 @@ devtools::install_github("csetraynor/simtte")
 
 ## Quick Start
 
+### Weibull Model
+
 ```r
 library(simtte)
 
-# Weibull simulation
 set.seed(42)
-lp <- matrix(rnorm(20, 0, 0.5), nrow = 20)
-result <- sim_tte(
-  pi = lp, mu = -1, coefs = 1.1,
-  time = seq(0.1, 50, by = 0.1),
-  type = "weibull", end_time = 50
-)
-head(result)
+lp <- matrix(rnorm(50, 0, 0.5), nrow = 50)
 
-# M-splines simulation
-data("ms_data")
-lp <- matrix(runif(nrow(ms_data$basis)), nrow = nrow(ms_data$basis))
 result <- sim_tte(
-  pi = lp, mu = ms_data$mu, basis = ms_data$basis,
-  coefs = ms_data$coefs, time = ms_data$time, type = "ms"
+  pi       = lp,
+  mu       = -1,
+  coefs    = 1.1,        # Weibull shape parameter
+  time     = seq(0.1, 100, by = 0.1),
+  type     = "weibull",
+  end_time = 100
 )
+
+head(result)
+#>   sim_time sim_status ID         lp
+#> 1    22.20          1  1  0.7390416
+#> 2   100.00          0  2 -0.3016609
+#> 3    54.97          1  3  0.3344547
+#> 4    36.18          1  4  0.5615619
+#> 5    75.40          1  5 -0.0884716
+#> 6   100.00          0  6 -0.1253891
+```
+
+### Flexible M-Spline Model
+
+```r
+library(simtte)
+
+data("ms_data")
+
+lp <- matrix(runif(nrow(ms_data$basis)), nrow = nrow(ms_data$basis))
+
+result <- sim_tte(
+  pi    = lp,
+  mu    = ms_data$mu,
+  basis = ms_data$basis,
+  coefs = ms_data$coefs,
+  time  = ms_data$time,
+  type  = "ms"
+)
+
 head(result)
 ```
+
+### Exploring Prognostic Index Effects
+
+`explore_pi_tq_surv()` quantifies the survival difference at the median
+survival time across a range of log hazard ratios, which is useful for
+understanding how covariate effects translate into differences in survival.
+
+```r
+data_sim <- explore_pi_tq_surv(
+  pi       = seq(-2, 2, by = 0.25),
+  mu       = -1,
+  shape    = 1.1,
+  type     = "weibull",
+  end_time = 100
+)
+
+plot(survdiff_tq ~ lp, data = data_sim,
+     xlab = "Log Hazard Ratio", ylab = "Survival Difference at Median",
+     main = "Effect of Prognostic Index on Median Survival")
+```
+
+## Statistical Background
+
+### Weibull Model
+
+The Weibull hazard at time $t$ for individual $i$ is:
+
+$$h_i(t) = \exp(\mu + \mathbf{x}_i'\boldsymbol{\beta}) \cdot \gamma \cdot t^{\gamma - 1}$$
+
+where $\mu$ is the intercept, $\mathbf{x}_i'\boldsymbol{\beta}$ is the linear
+predictor (prognostic index), and $\gamma > 0$ is the shape parameter
+(`coefs`).
+
+### M-Spline (Flexible Parametric) Model
+
+The baseline hazard is expressed as a linear combination of M-spline basis
+functions:
+
+$$h_0(t) = \sum_{k} \alpha_k M_k(t)$$
+
+This approach (Royston & Parmar, 2002) accommodates non-monotone and
+non-proportional hazard shapes, making it suitable for modelling
+immunotherapy and other treatments with delayed effects.
+
+### Inverse Transform Sampling
+
+For each individual, the package solves the Kolmogorov forward equation
+numerically via **mrgsolve** to obtain $S(t)$, then draws $U \sim
+\text{Uniform}(0,1)$ and finds $t^*$ such that $S(t^*) = U$. If $t^* >$
+`end_time`, the observation is administratively censored.
+
+## Function Reference
+
+| Function | Description |
+|---|---|
+| `sim_tte()` | Simulate a survival dataset from Weibull or M-spline model |
+| `sim_tte_df()` | Apply inverse transform sampling to custom mrgsolve output |
+| `explore_pi_tq_surv()` | Explore survival differences across prognostic index values |
+| `ms_data` | Bundled example M-spline basis, coefficients, and time grid |
+
+## Output Structure
+
+All simulation functions return a data frame with the following columns:
+
+| Column | Type | Description |
+|---|---|---|
+| `sim_time` | numeric | Simulated event or censoring time |
+| `sim_status` | integer | Event indicator: 1 = event, 0 = censored |
+| `ID` | integer | Subject identifier |
+| `lp` | numeric | Log prognostic index (linear predictor) |
+
+## Vignettes
+
+Two vignettes provide deeper guidance:
+
+- **Getting Started** — Basic workflow for Weibull and M-spline simulation.
+- **Advanced Simulation Scenarios** — Custom mrgsolve models, sensitivity
+  analyses, and complex trial designs.
+
+```r
+vignette("introduction",    package = "simtte")
+vignette("advanced-usage",  package = "simtte")
+```
+
+## Citation
+
+If you use **simtte** in published research, please cite:
+
+```
+Traynor C (2025). simtte: Simulate Time-to-Event Data Using Weibull and
+Spline Models. R package version 1.0.1.
+https://CRAN.R-project.org/package=simtte
+```
+
+## References
+
+Bender R, Augustin T, Blettner M (2005). Generating survival times to
+simulate Cox proportional hazards models. *Statistics in Medicine*,
+**24**(11), 1713–1723. [doi:10.1002/sim.2059](https://doi.org/10.1002/sim.2059)
+
+Royston P, Parmar MKB (2002). Flexible parametric proportional-hazards and
+proportional-odds models for censored survival data, with application to
+prognostic modelling and estimation of treatment effects. *Statistics in
+Medicine*, **21**(15), 2175–2197. [doi:10.1002/sim.1203](https://doi.org/10.1002/sim.1203)
 
 ## License
 
