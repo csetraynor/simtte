@@ -1,4 +1,4 @@
-# simtte <img src="man/figures/logo.png" align="right" height="139" alt="" />
+# simtte
 
 <!-- badges: start -->
 [![CRAN status](https://www.r-pkg.org/badges/version/simtte)](https://CRAN.R-project.org/package=simtte)
@@ -12,6 +12,12 @@ for clinical trial design and analysis. It supports Weibull parametric models
 and flexible M-spline baseline hazard models, using
 [mrgsolve](https://github.com/metrumresearchgroup/mrgsolve) as the ODE solver
 backend and inverse transform sampling to generate event times.
+
+## How It Works
+
+<p align="center">
+  <img src="man/figures/flowchart.svg" alt="simtte simulation pipeline flowchart" width="720"/>
+</p>
 
 ## Overview
 

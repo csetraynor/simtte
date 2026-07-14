@@ -3,3 +3,14 @@
 .RData
 .Ruserdata
 inst/doc
+
+# Quarto rendering cache/state (not needed to view rendered posts)
+.quarto/
+_freeze/
+*.knit.md
+
+# rjtools/LaTeX compilation artifacts in manuscript/ (regenerated on render)
+manuscript/*.log
+manuscript/*.aux
+manuscript/*.out
+manuscript/initial_checks.log

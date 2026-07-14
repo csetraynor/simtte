@@ -22,3 +22,6 @@
 ^inst/validation$
 .*\.tar\.gz$
 ^\.claude$
+^CRAN-SUBMISSION$
+^blogs$
+^manuscript$

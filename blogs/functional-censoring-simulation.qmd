@@ -1,0 +1,243 @@
+---
+title: "Simulating random (functional) censoring on top of an M-spline hazard"
+subtitle: "Why a fixed study end time isn't the only kind of censoring worth simulating"
+author: "Carlos Traynor"
+date: "2026-07-14"
+format: gfm
+---
+
+## Administrative vs. random censoring
+
+In [the previous post](msplines-simulation.md) we simulated event times from
+a flexible M-spline baseline hazard and let `sim_tte()` apply
+**administrative censoring**: a single fixed cutoff (`end_time`) at which
+the study simply stops, and anyone who hasn't had the event yet is
+censored at that instant. This is the easiest kind of censoring to reason
+about — every censored subject has exactly the same censoring time — and
+it's a perfectly reasonable model for "the trial ended on this date."
+
+But a lot of real censoring doesn't look like that. Patients drop out at
+different times for different reasons — they move away, withdraw consent,
+get lost to follow-up, or die of unrelated causes. None of that lines up
+with a single administrative cutoff. The more general and more realistic
+way to model this is **random (functional) censoring**: censoring time is
+itself a random variable, drawn independently for each subject from its
+own distribution, competing directly with the event time. Whichever
+happens first — the event or the censoring — is what you actually observe.
+
+This matters for simulation studies because administrative-only censoring
+is a best case: every subject contributes information right up until the
+same cutoff. Random censoring is messier and more realistic, and it's the
+setting you need if you want to stress-test an estimator's behavior under
+varying, unpredictable follow-up times rather than one clean cutoff.
+
+## Step 1: true event times from the M-spline hazard
+
+We'll reuse the exact M-spline specification from the previous post — same
+knots, same degree-2 basis, same coefficients — so the two posts read as a
+series. The one thing we change is the intercept `mu`: in the first post
+we used `mu = -0.5`, which left a substantial fraction of subjects
+administratively censored at the 24-unit horizon. Here we want genuine
+*true* event times for (almost) everyone, uncontaminated by that
+administrative boundary, so we can cleanly layer our own random censoring
+on top afterward. Bumping the intercept up to `mu = 1.5` pushes essentially
+every subject's event before the 24-unit horizon:
+
+```{r}
+#| label: setup
+#| message: false
+library(simtte)
+library(splines2)
+library(survival)
+
+set.seed(20260714)
+```
+
+```{r}
+#| label: true-event-times
+time_new     <- seq(0.1, 24, by = 0.1)
+knots_new    <- quantile(time_new, probs = c(0.15, 0.35, 0.55, 0.75))
+boundary_new <- c(0, 24)
+basis_new <- mSpline(time_new, knots = knots_new, Boundary.knots = boundary_new,
+                      degree = 2, intercept = TRUE)
+coefs_new <- c(0.05, 0.35, 0.55, 0.30, 0.10, 0.04, 0.02)
+mu_event  <- 1.5   # vs. -0.5 in the M-splines post, so events resolve within the horizon
+
+n <- 300
+lp <- matrix(rep(0, n), nrow = n)
+sim_true <- sim_tte(pi = lp, mu = mu_event, basis = basis_new, coefs = coefs_new,
+                     time = time_new, type = "ms", end_time = 24)
+
+event_time <- sim_true$sim_time
+mean(sim_true$sim_status)  # fraction with a genuine event within the modeled horizon
+```
+
+With `mu_event = 1.5`, essentially everyone reaches their true event before
+the spline's modeled horizon runs out — `event_time` is now a clean vector
+of *true* event times, free of any administrative artifact.
+
+## Step 2: an independent Weibull censoring time
+
+Now we add a second, completely independent process: a censoring time
+drawn per subject from a Weibull distribution, `rweibull(n, shape, scale)`.
+The `shape` parameter controls whether dropout risk is roughly constant,
+accelerating, or decelerating over time; `scale` controls the typical
+timing of dropout. Holding `shape` fixed and varying `scale` is the
+simplest way to dial the overall censoring rate up or down — a smaller
+scale means earlier, more frequent censoring:
+
+```{r}
+#| label: tune-censoring-rate
+shape_c <- 1.5
+scale_candidates <- c("~50%" = 2.5, "~30%" = 4.7, "~10%" = 12.5)
+
+for (lbl in names(scale_candidates)) {
+  set.seed(1)
+  cens <- rweibull(n, shape = shape_c, scale = scale_candidates[[lbl]])
+  cat(lbl, "target -> scale =", scale_candidates[[lbl]],
+      "-> achieved rate =", round(mean(cens < event_time), 3), "\n")
+}
+```
+
+Three `scale` values, three very different censoring intensities, same
+`shape`. That's the whole lever.
+
+## Step 3: combining event and censoring times
+
+This is the mechanical heart of random-censoring simulation, and it's
+worth seeing explicitly rather than hidden in a helper function. For any
+subject, we only ever *observe* the earlier of the two competing times,
+plus a flag for which one it was:
+
+```{r}
+#| label: explicit-combine
+cens_30 <- {
+  set.seed(1)
+  rweibull(n, shape = shape_c, scale = scale_candidates[["~30%"]])
+}
+
+observed_time <- pmin(event_time, cens_30)
+status        <- as.integer(event_time <= cens_30)
+
+head(data.frame(event_time, cens_30, observed_time, status))
+mean(status == 0)  # achieved censoring rate
+```
+
+`status == 1` means we observed the true event; `status == 0` means
+censoring happened first and the true event time (had we kept following
+that subject) is unknown. Now that the mechanics are visible, we can wrap
+it in a small reusable function and apply it across all three target
+rates:
+
+```{r}
+#| label: apply-to-all-rates
+apply_censoring <- function(event_time, shape, scale, seed = 1) {
+  set.seed(seed)
+  cens <- rweibull(length(event_time), shape = shape, scale = scale)
+  data.frame(
+    observed_time = pmin(event_time, cens),
+    status        = as.integer(event_time <= cens)
+  )
+}
+
+d50 <- apply_censoring(event_time, shape_c, scale_candidates[["~50%"]])
+d30 <- apply_censoring(event_time, shape_c, scale_candidates[["~30%"]])
+d10 <- apply_censoring(event_time, shape_c, scale_candidates[["~10%"]])
+
+data.frame(
+  target   = names(scale_candidates),
+  scale    = unname(scale_candidates),
+  achieved = c(mean(d50$status == 0), mean(d30$status == 0), mean(d10$status == 0))
+)
+```
+
+## How censoring distorts what you can observe
+
+The true event times are, by construction, fully observed (no censoring
+at all), so a Kaplan-Meier fit on `event_time` directly gives us the true
+underlying survival curve. Let's compare that to the Kaplan-Meier curve
+you'd actually estimate from the *observed*, randomly censored data at
+each of the three censoring rates:
+
+```{r}
+#| label: fig-comparison
+#| fig-cap: "True (uncensored) survival curve vs. the Kaplan-Meier curve estimated from randomly censored data, at three censoring rates"
+#| fig-width: 12
+#| fig-height: 4.2
+fit_true <- survfit(Surv(event_time, rep(1, n)) ~ 1)
+
+par(mfrow = c(1, 3), mar = c(4, 4, 3, 1))
+
+fit_50 <- survfit(Surv(d50$observed_time, d50$status) ~ 1)
+plot(fit_true, col = "black", lwd = 2, conf.int = FALSE,
+     xlab = "Time", ylab = "Survival probability", main = "~50% random censoring")
+lines(fit_50, col = "#3366CC", lwd = 2, conf.int = FALSE)
+legend("topright", legend = c("True", "Observed"), col = c("black", "#3366CC"),
+       lwd = 2, bty = "n", cex = 0.8)
+
+fit_30 <- survfit(Surv(d30$observed_time, d30$status) ~ 1)
+plot(fit_true, col = "black", lwd = 2, conf.int = FALSE,
+     xlab = "Time", ylab = "Survival probability", main = "~30% random censoring")
+lines(fit_30, col = "#339966", lwd = 2, conf.int = FALSE)
+legend("topright", legend = c("True", "Observed"), col = c("black", "#339966"),
+       lwd = 2, bty = "n", cex = 0.8)
+
+fit_10 <- survfit(Surv(d10$observed_time, d10$status) ~ 1)
+plot(fit_true, col = "black", lwd = 2, conf.int = FALSE,
+     xlab = "Time", ylab = "Survival probability", main = "~10% random censoring")
+lines(fit_10, col = "#CC3333", lwd = 2, conf.int = FALSE)
+legend("topright", legend = c("True", "Observed"), col = c("black", "#CC3333"),
+       lwd = 2, bty = "n", cex = 0.8)
+```
+
+At ~10% censoring the observed curve tracks the truth closely across
+almost the whole timeline. At ~30% it starts to diverge earlier and the
+tail becomes visibly noisier. At ~50%, the observed Kaplan-Meier curve
+departs from the truth much earlier and stops well short of the true
+curve's range entirely — with half the sample censored, there simply
+isn't enough information left to estimate the tail of the distribution,
+and the step function gets choppier throughout. Same underlying M-spline
+hazard, same sample size — the only thing that changed is how aggressively
+an *independent* process competed with the event.
+
+## Why this matters, and a caveat
+
+Random censoring is the setting you want whenever a simulation study needs
+to look like a real trial with imperfect follow-up rather than a clean,
+uniformly-observed cohort. A few concrete uses:
+
+- **Stress-testing an estimator's robustness** to different amounts and
+  shapes of censoring — does a proposed survival model or test still
+  perform well when 40-50% of subjects are censored, or does its variance
+  blow up?
+- **Mimicking realistic dropout patterns** in a trial design simulation —
+  power calculations that assume administrative-only censoring can be
+  optimistic if your actual population drops out steadily over time.
+- **Comparing informative vs. non-informative censoring** — building
+  simulations where censoring risk depends on covariates or even on the
+  (unobserved) event risk itself, to see how badly standard methods break
+  down when the non-informative-censoring assumption is violated.
+
+That last point is also this post's caveat. Everything here used
+**independent, non-informative censoring**: the Weibull censoring time was
+drawn completely independently of the M-spline event time, for every
+subject. Standard survival methods (Kaplan-Meier, Cox models, and `simtte`
+itself) lean on that independence assumption. Real dropout is often
+**informative** — sicker patients may be more likely to drop out, or more
+likely to have the event, correlating the two processes — and when that's
+true, naively treating censoring as independent will bias your estimates.
+Simulating *that* kind of censoring means deliberately correlating the
+censoring and event mechanisms (e.g., making the censoring hazard depend
+on the same linear predictor as the event hazard) — a natural next step
+once you're comfortable with the independent case shown here.
+
+## References
+
+- Bender R, Augustin T, Blettner M (2005). Generating survival times to
+  simulate Cox proportional hazards models. *Statistics in Medicine*,
+  24(11), 1713–1723. <https://doi.org/10.1002/sim.2059>
+- Royston P, Parmar MKB (2002). Flexible parametric proportional-hazards
+  and proportional-odds models for censored survival data, with
+  application to prognostic modelling and estimation of treatment
+  effects. *Statistics in Medicine*, 21(15), 2175–2197.
+  <https://doi.org/10.1002/sim.1203>

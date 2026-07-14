@@ -1,0 +1,98 @@
+---
+title: "simtte: Simulating Time-to-Event Data Using M-Splines and Flexible Censoring Mechanisms in R"
+date: "2026-07-14"
+abstract: >
+  Simulating realistic time-to-event data is central to evaluating survival
+  analysis methods, planning sample sizes, and designing clinical trials, yet
+  many simulation tools restrict investigators to standard parametric hazards
+  and administrative censoring. The simtte package for R generates
+  time-to-event data from either Weibull or flexible M-spline baseline
+  hazards, using the mrgsolve ordinary differential equation solver to
+  compute cumulative hazards and inverse transform sampling to draw event
+  times. M-splines represent the baseline hazard as a non-negative linear
+  combination of spline basis functions, allowing complex hazard shapes such
+  as early risk spikes, plateaus, and multi-modal patterns that a single
+  Weibull shape parameter cannot capture. This paper describes the design and
+  use of simtte, positions it relative to existing survival-simulation
+  packages including simsurv, survsim, and simstudy, and demonstrates its
+  core workflow. We show how to specify a custom M-spline hazard from
+  user-chosen knots, degree, and coefficients, and how to layer independent
+  random censoring drawn from an auxiliary distribution such as the Weibull
+  on top of simulated event times, in addition to the administrative
+  censoring supported natively by the package. Two worked examples
+  illustrate this flexibility: comparing hazard shapes and treatment effects
+  simulated under an M-spline baseline, and quantifying how increasing rates
+  of non-informative random censoring erode the precision of Kaplan-Meier
+  estimates relative to the true underlying survival curve. We conclude with
+  a discussion of current limitations, including the independence assumption
+  underlying non-informative censoring, and directions for future
+  development.
+draft: true
+author:
+  - name: Carlos Traynor
+    affiliation: "[affiliation to be confirmed]"
+    address:
+    - "[address to be confirmed]"
+    email: carlos.traynor.qcp@gmail.com
+type: package
+output:
+  rjtools::rjournal_article:
+    self_contained: yes
+    toc: no
+bibliography: RJreferences.bib
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(simtte)
+```
+
+# Introduction
+
+*Placeholder: motivate realistic time-to-event simulation (evaluating
+survival methods, sample size/power calculations, methods research);
+position simtte relative to simsurv, survsim, and simstudy; state the
+paper's contributions and outline.*
+
+# The simtte package
+
+*Placeholder: package overview -- core functions (`sim_tte()`,
+`sim_tte_df()`, `explore_pi_tq_surv()`), the inverse-transform-sampling
+workflow, and a minimal Weibull example drawn from the introductory
+vignette.*
+
+# M-splines for flexible baseline hazards
+
+*Placeholder: formal definition of the M-spline basis and its
+non-negativity property, its relationship to Royston-Parmar flexible
+parametric survival models, and how `simtte` turns a basis matrix and
+coefficient vector into a baseline hazard via `mrgsolve`. Draws on the
+advanced-usage vignette and the M-splines blog post, rewritten for a
+journal audience with proper equations.*
+
+# Modelling administrative and random censoring
+
+*Placeholder: administrative (fixed end-time) censoring as implemented
+natively by `sim_tte()`, versus independent random/functional censoring
+constructed by the user via `observed_time = pmin(event_time,
+censoring_time)` and `status = 1(event_time <= censoring_time)`.
+Presented as a general method with a Weibull example, drawing on the
+functional-censoring blog post.*
+
+# Illustrative examples
+
+*Placeholder: two complete worked examples with executed code, output,
+and figures, synthesising the M-spline and censoring material above --
+(1) comparing Weibull and M-spline hazard/treatment-effect shapes in a
+simulated two-arm trial; (2) quantifying how increasing random censoring
+rates distort Kaplan-Meier estimates relative to the true simulated
+survival curve.*
+
+# Discussion and future work
+
+*Placeholder: use cases (trial design, estimator robustness checks),
+limitations (independence/non-informative censoring assumption, reliance
+on mrgsolve for the ODE backend), and directions for future development.*
+
+# References {-}

@@ -1,0 +1,72 @@
+% !TeX root = RJwrapper.tex
+\title{simtte: Simulating Time-to-Event Data Using M-Splines and Flexible Censoring Mechanisms in R}
+
+
+\author{by Carlos Traynor}
+
+\maketitle
+
+\abstract{%
+Simulating realistic time-to-event data is central to evaluating survival analysis methods, planning sample sizes, and designing clinical trials, yet many simulation tools restrict investigators to standard parametric hazards and administrative censoring. The simtte package for R generates time-to-event data from either Weibull or flexible M-spline baseline hazards, using the mrgsolve ordinary differential equation solver to compute cumulative hazards and inverse transform sampling to draw event times. M-splines represent the baseline hazard as a non-negative linear combination of spline basis functions, allowing complex hazard shapes such as early risk spikes, plateaus, and multi-modal patterns that a single Weibull shape parameter cannot capture. This paper describes the design and use of simtte, positions it relative to existing survival-simulation packages including simsurv, survsim, and simstudy, and demonstrates its core workflow. We show how to specify a custom M-spline hazard from user-chosen knots, degree, and coefficients, and how to layer independent random censoring drawn from an auxiliary distribution such as the Weibull on top of simulated event times, in addition to the administrative censoring supported natively by the package. Two worked examples illustrate this flexibility: comparing hazard shapes and treatment effects simulated under an M-spline baseline, and quantifying how increasing rates of non-informative random censoring erode the precision of Kaplan-Meier estimates relative to the true underlying survival curve. We conclude with a discussion of current limitations, including the independence assumption underlying non-informative censoring, and directions for future development.
+}
+
+\section{Introduction}\label{introduction}
+
+\emph{Placeholder: motivate realistic time-to-event simulation (evaluating
+survival methods, sample size/power calculations, methods research);
+position simtte relative to simsurv, survsim, and simstudy; state the
+paper's contributions and outline.}
+
+\section{The simtte package}\label{the-simtte-package}
+
+\emph{Placeholder: package overview -- core functions (\texttt{sim\_tte()},
+\texttt{sim\_tte\_df()}, \texttt{explore\_pi\_tq\_surv()}), the inverse-transform-sampling
+workflow, and a minimal Weibull example drawn from the introductory
+vignette.}
+
+\section{M-splines for flexible baseline hazards}\label{m-splines-for-flexible-baseline-hazards}
+
+\emph{Placeholder: formal definition of the M-spline basis and its
+non-negativity property, its relationship to Royston-Parmar flexible
+parametric survival models, and how \texttt{simtte} turns a basis matrix and
+coefficient vector into a baseline hazard via \texttt{mrgsolve}. Draws on the
+advanced-usage vignette and the M-splines blog post, rewritten for a
+journal audience with proper equations.}
+
+\section{Modelling administrative and random censoring}\label{modelling-administrative-and-random-censoring}
+
+\emph{Placeholder: administrative (fixed end-time) censoring as implemented
+natively by \texttt{sim\_tte()}, versus independent random/functional censoring
+constructed by the user via \texttt{observed\_time\ =\ pmin(event\_time,\ censoring\_time)} and \texttt{status\ =\ 1(event\_time\ \textless{}=\ censoring\_time)}.
+Presented as a general method with a Weibull example, drawing on the
+functional-censoring blog post.}
+
+\section{Illustrative examples}\label{illustrative-examples}
+
+\emph{Placeholder: two complete worked examples with executed code, output,
+and figures, synthesising the M-spline and censoring material above --
+(1) comparing Weibull and M-spline hazard/treatment-effect shapes in a
+simulated two-arm trial; (2) quantifying how increasing random censoring
+rates distort Kaplan-Meier estimates relative to the true simulated
+survival curve.}
+
+\section{Discussion and future work}\label{discussion-and-future-work}
+
+\emph{Placeholder: use cases (trial design, estimator robustness checks),
+limitations (independence/non-informative censoring assumption, reliance
+on mrgsolve for the ODE backend), and directions for future development.}
+
+\section*{References}\label{references}
+\addcontentsline{toc}{section}{References}
+
+\bibliography{RJreferences.bib}
+
+\address{%
+Carlos Traynor\\
+{[}affiliation to be confirmed{]}\\%
+{[}address to be confirmed{]}\\
+%
+%
+%
+\href{mailto:carlos.traynor.qcp@gmail.com}{\nolinkurl{carlos.traynor.qcp@gmail.com}}%
+}

@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 910" width="760" height="910">
+  <defs>
+    <style>
+      text { font-family: system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+    </style>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#00000020"/>
+    </filter>
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748B"/>
+    </marker>
+    <marker id="arr-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#15803D"/>
+    </marker>
+    <marker id="arr-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#B91C1C"/>
+    </marker>
+  </defs>
+
+  <!-- ── Background ── -->
+  <rect width="760" height="910" rx="14" fill="#F8FAFC"/>
+  <rect x="0" y="0" width="760" height="64" rx="14" fill="#0F172A"/>
+  <rect x="0" y="50" width="760" height="14" fill="#0F172A"/>
+
+  <!-- ── Title ── -->
+  <text x="380" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#F1F5F9" letter-spacing="0.5">simtte  ·  Simulation Pipeline</text>
+  <text x="380" y="51" text-anchor="middle" font-size="10.5" fill="#94A3B8">Time-to-Event Simulation via Inverse Transform Sampling  ·  v1.0.1</text>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- INPUTS -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="100" y="76" width="560" height="84" rx="10" fill="#1E40AF" filter="url(#shadow)"/>
+  <!-- inner divider -->
+  <line x1="380" y1="92" x2="380" y2="152" stroke="#93C5FD" stroke-width="0.8" stroke-dasharray="4,3" opacity="0.6"/>
+
+  <text x="380" y="95" text-anchor="middle" font-size="11" font-weight="700" fill="#BFDBFE" letter-spacing="1">INPUTS</text>
+
+  <!-- Left column -->
+  <text x="238" y="114" text-anchor="middle" font-size="11" font-weight="600" fill="#E0EEFF">Prognostic Index  (π)</text>
+  <text x="238" y="130" text-anchor="middle" font-size="10" fill="#93C5FD">Covariate matrix X,  coefficients β</text>
+  <text x="238" y="147" text-anchor="middle" font-size="10" fill="#93C5FD">π = X β   (log hazard ratio scale)</text>
+
+  <!-- Right column -->
+  <text x="522" y="114" text-anchor="middle" font-size="11" font-weight="600" fill="#E0EEFF">Model Parameters</text>
+  <text x="522" y="130" text-anchor="middle" font-size="10" fill="#93C5FD">Intercept μ,  end_time (censoring)</text>
+  <text x="522" y="147" text-anchor="middle" font-size="10" fill="#93C5FD">type = "weibull"  or  "ms"</text>
+
+  <!-- function label -->
+  <rect x="565" y="68" width="118" height="18" rx="5" fill="#3B82F6"/>
+  <text x="624" y="80" text-anchor="middle" font-size="9.5" font-weight="600" fill="#DBEAFE">sim_tte()</text>
+
+  <!-- ── arrow down ── -->
+  <line x1="380" y1="162" x2="380" y2="186" stroke="#64748B" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- MODEL SELECTION -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="210" y="188" width="340" height="50" rx="10" fill="#0F766E" filter="url(#shadow)"/>
+  <text x="380" y="210" text-anchor="middle" font-size="12" font-weight="700" fill="#CCFBF1">Model Selection</text>
+  <text x="380" y="228" text-anchor="middle" font-size="10" fill="#99F6E4">Dispatch by  type  argument</text>
+
+  <!-- ── fork left to Weibull ── -->
+  <path d="M 290 238 L 195 238 L 195 278" stroke="#64748B" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <!-- ── fork right to M-Spline ── -->
+  <path d="M 470 238 L 565 238 L 565 278" stroke="#64748B" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+
+  <!-- fork labels -->
+  <rect x="103" y="228" width="78" height="17" rx="4" fill="#FEF9C3"/>
+  <text x="142" y="240" text-anchor="middle" font-size="9" font-weight="600" fill="#854D0E">"weibull"</text>
+  <rect x="579" y="228" width="64" height="17" rx="4" fill="#EDE9FE"/>
+  <text x="611" y="240" text-anchor="middle" font-size="9" font-weight="600" fill="#5B21B6">"ms"</text>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- WEIBULL BOX -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="45" y="280" width="295" height="94" rx="10" fill="#1D4ED8" filter="url(#shadow)"/>
+  <text x="193" y="304" text-anchor="middle" font-size="12" font-weight="700" fill="#DBEAFE">Weibull Model</text>
+  <text x="193" y="322" text-anchor="middle" font-size="10.5" fill="#BFDBFE">h(t) = exp(μ+π) · γ · t^(γ−1)</text>
+  <text x="193" y="340" text-anchor="middle" font-size="10" fill="#93C5FD">Shape  γ = coefs  (scalar, &gt; 0)</text>
+  <text x="193" y="358" text-anchor="middle" font-size="9.5" fill="#60A5FA" font-style="italic">Monotone increasing / decreasing / flat</text>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- M-SPLINE BOX -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="420" y="280" width="295" height="94" rx="10" fill="#6D28D9" filter="url(#shadow)"/>
+  <text x="568" y="304" text-anchor="middle" font-size="12" font-weight="700" fill="#EDE9FE">M-Spline Model</text>
+  <text x="568" y="322" text-anchor="middle" font-size="10.5" fill="#DDD6FE">h₀(t) = Σₖ αₖ Mₖ(t)</text>
+  <text x="568" y="340" text-anchor="middle" font-size="10" fill="#C4B5FD">basis × coefs  →  basehaz vector</text>
+  <text x="568" y="358" text-anchor="middle" font-size="9.5" fill="#A78BFA" font-style="italic">Flexible hazard · Royston &amp; Parmar (2002)</text>
+
+  <!-- ── merge arrows down to mrgsolve ── -->
+  <path d="M 193 376 L 193 418 L 292 418" stroke="#64748B" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <path d="M 568 376 L 568 418 L 468 418" stroke="#64748B" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- MRGSOLVE ODE SOLVER -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="100" y="406" width="560" height="88" rx="10" fill="#14532D" filter="url(#shadow)"/>
+
+  <!-- mrgsolve brand accent -->
+  <rect x="100" y="406" width="8" height="88" rx="10" fill="#22C55E"/>
+  <rect x="100" y="406" width="16" height="88" fill="#22C55E" opacity="0.4"/>
+
+  <text x="392" y="430" text-anchor="middle" font-size="12" font-weight="700" fill="#BBF7D0">ODE Solver  —  mrgsolve::mrgsim()</text>
+  <text x="392" y="449" text-anchor="middle" font-size="10" fill="#86EFAC">Numerically integrates h(t)  →  cumulative hazard  H(t)</text>
+  <text x="392" y="467" text-anchor="middle" font-size="10" fill="#86EFAC">Survival function  S(t) = exp(−H(t))  over discrete time grid</text>
+  <text x="392" y="483" text-anchor="middle" font-size="9.5" fill="#4ADE80" font-style="italic">Kolmogorov forward equation  ·  one trajectory per subject</text>
+
+  <!-- function label -->
+  <rect x="565" y="399" width="118" height="18" rx="5" fill="#15803D"/>
+  <text x="624" y="411" text-anchor="middle" font-size="9.5" font-weight="600" fill="#DCFCE7">sim_tte_df()</text>
+
+  <!-- ── arrow down ── -->
+  <line x1="380" y1="496" x2="380" y2="520" stroke="#64748B" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- INVERSE TRANSFORM SAMPLING -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="100" y="522" width="560" height="84" rx="10" fill="#581C87" filter="url(#shadow)"/>
+  <text x="380" y="546" text-anchor="middle" font-size="12" font-weight="700" fill="#E9D5FF">Inverse Transform Sampling</text>
+  <text x="380" y="564" text-anchor="middle" font-size="10" fill="#DDD6FE">Draw  U ~ Uniform(0, 1)  independently per subject</text>
+  <text x="380" y="582" text-anchor="middle" font-size="10" fill="#DDD6FE">Find  t* = min{ t : S(t) ≤ U }   (first S(t) crossing)</text>
+  <text x="380" y="597" text-anchor="middle" font-size="9.5" fill="#C4B5FD" font-style="italic">Bender, Augustin &amp; Blettner (2005, Stat Med)  ·  doi:10.1002/sim.2059</text>
+
+  <!-- ── arrow down ── -->
+  <line x1="380" y1="608" x2="380" y2="630" stroke="#64748B" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- DECISION DIAMOND -->
+  <!-- ════════════════════════════════════ -->
+  <polygon points="380,634 508,666 380,698 252,666" fill="#92400E" filter="url(#shadow)"/>
+  <polygon points="380,638 504,666 380,694 256,666" fill="#B45309"/>
+  <text x="380" y="661" text-anchor="middle" font-size="11.5" font-weight="700" fill="#FEF9C3">t*  ≤  end_time ?</text>
+  <text x="380" y="677" text-anchor="middle" font-size="9" fill="#FDE68A">Administrative censoring check</text>
+
+  <!-- ── YES arrow left ── -->
+  <path d="M 252 666 L 168 666 L 168 716" stroke="#15803D" stroke-width="2.2" fill="none" marker-end="url(#arr-green)"/>
+  <rect x="170" y="653" width="40" height="17" rx="4" fill="#DCFCE7"/>
+  <text x="190" y="665" text-anchor="middle" font-size="9.5" font-weight="700" fill="#14532D">YES</text>
+
+  <!-- ── NO arrow right ── -->
+  <path d="M 508 666 L 592 666 L 592 716" stroke="#B91C1C" stroke-width="2.2" fill="none" marker-end="url(#arr-red)"/>
+  <rect x="550" y="653" width="30" height="17" rx="4" fill="#FEE2E2"/>
+  <text x="565" y="665" text-anchor="middle" font-size="9.5" font-weight="700" fill="#991B1B">NO</text>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- EVENT BOX -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="40" y="718" width="255" height="74" rx="10" fill="#064E3B" filter="url(#shadow)"/>
+  <rect x="40" y="718" width="255" height="6" rx="10" fill="#22C55E"/>
+  <text x="168" y="744" text-anchor="middle" font-size="12" font-weight="700" fill="#A7F3D0">Event Recorded</text>
+  <text x="168" y="762" text-anchor="middle" font-size="10.5" fill="#6EE7B7">sim_time  =  t*</text>
+  <text x="168" y="779" text-anchor="middle" font-size="10.5" fill="#6EE7B7">sim_status  =  1</text>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- CENSORED BOX -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="465" y="718" width="255" height="74" rx="10" fill="#7F1D1D" filter="url(#shadow)"/>
+  <rect x="465" y="718" width="255" height="6" rx="10" fill="#EF4444"/>
+  <text x="593" y="744" text-anchor="middle" font-size="12" font-weight="700" fill="#FECACA">Administratively Censored</text>
+  <text x="593" y="762" text-anchor="middle" font-size="10.5" fill="#FCA5A5">sim_time  =  end_time</text>
+  <text x="593" y="779" text-anchor="middle" font-size="10.5" fill="#FCA5A5">sim_status  =  0</text>
+
+  <!-- ── merge: vertical lines to horizontal bar ── -->
+  <line x1="168" y1="794" x2="168" y2="822" stroke="#64748B" stroke-width="2"/>
+  <line x1="593" y1="794" x2="593" y2="822" stroke="#64748B" stroke-width="2"/>
+  <line x1="168" y1="822" x2="593" y2="822" stroke="#64748B" stroke-width="2"/>
+  <line x1="380" y1="822" x2="380" y2="838" stroke="#64748B" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- OUTPUT DATA FRAME -->
+  <!-- ════════════════════════════════════ -->
+  <rect x="100" y="840" width="560" height="52" rx="10" fill="#1E293B" filter="url(#shadow)"/>
+
+  <!-- column chips -->
+  <rect x="120" y="852" width="82" height="24" rx="6" fill="#334155"/>
+  <text x="161" y="868" text-anchor="middle" font-size="9.5" font-weight="600" fill="#94A3B8">sim_time</text>
+
+  <rect x="212" y="852" width="90" height="24" rx="6" fill="#334155"/>
+  <text x="257" y="868" text-anchor="middle" font-size="9.5" font-weight="600" fill="#94A3B8">sim_status</text>
+
+  <rect x="312" y="852" width="52" height="24" rx="6" fill="#334155"/>
+  <text x="338" y="868" text-anchor="middle" font-size="9.5" font-weight="600" fill="#94A3B8">ID</text>
+
+  <rect x="374" y="852" width="36" height="24" rx="6" fill="#334155"/>
+  <text x="392" y="868" text-anchor="middle" font-size="9.5" font-weight="600" fill="#94A3B8">lp</text>
+
+  <rect x="420" y="852" width="110" height="24" rx="6" fill="#1D4ED8" opacity="0.5"/>
+  <text x="475" y="868" text-anchor="middle" font-size="9.5" fill="#93C5FD">+ extra covariates</text>
+
+  <text x="560" y="872" text-anchor="end" font-size="9" fill="#475569" font-style="italic">data.frame</text>
+
+  <!-- OUTPUT label -->
+  <text x="380" y="888" text-anchor="middle" font-size="10" font-weight="600" fill="#64748B" letter-spacing="1.5">OUTPUT</text>
+
+  <!-- ── legend strip ── -->
+  <rect x="100" y="900" width="560" height="6" rx="3" fill="url(#legendGrad)"/>
+
+  <defs>
+    <linearGradient id="legendGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#1E40AF"/>
+      <stop offset="30%"  stop-color="#1D4ED8"/>
+      <stop offset="50%"  stop-color="#14532D"/>
+      <stop offset="70%"  stop-color="#581C87"/>
+      <stop offset="85%"  stop-color="#064E3B"/>
+      <stop offset="100%" stop-color="#7F1D1D"/>
+    </linearGradient>
+  </defs>
+
+</svg>
