@@ -4,7 +4,7 @@
 #' @return Numeric time value.
 #' @noRd
 .get_time <- function(simdat, etime) {
-    unlist(simdat[etime, 2])
+    simdat[["time"]][etime]
 }
 
 #' Get event time index via inverse transform sampling
@@ -13,7 +13,7 @@
 #' @return Integer row index or -99 if no event.
 #' @noRd
 .get_tte <- function(U, pcurr) {
-    match(1, cumsum(pcurr %>% unlist() < U), nomatch = -99L)
+    match(TRUE, unlist(pcurr) <= U, nomatch = -99L)
 }
 
 #' Get maximum time from simulation data
@@ -21,7 +21,7 @@
 #' @return Numeric time value.
 #' @noRd
 .get_max_time <- function(simdat) {
-    unlist(simdat[nrow(simdat), 2])
+    simdat[["time"]][nrow(simdat)]
 }
 
 #' Get path to installed model files

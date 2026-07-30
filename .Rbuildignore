@@ -22,3 +22,5 @@
 ^inst/validation$
 .*\.tar\.gz$
 ^\.claude$
+^doc$
+^Meta$
