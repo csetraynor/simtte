@@ -4,12 +4,18 @@
 \alias{sim_tte_df}
 \title{Simulate Time-to-Event Data from a Custom mrgsolve Output}
 \usage{
-sim_tte_df(dat, surv_var = "p11", id_var = "ID", xdata = NULL)
+sim_tte_df(
+  dat,
+  surv_var = "p11",
+  id_var = "ID",
+  time_var = "time",
+  xdata = NULL
+)
 }
 \arguments{
 \item{dat}{Data frame. Output from \code{\link[mrgsolve]{mrgsim}}
 containing at minimum columns for time, subject ID, and survival
-probability.}
+probability. Columns are resolved by name (not position).}
 
 \item{surv_var}{Character string. Name of the column containing the
 survival probability (probability of remaining event-free). Default
@@ -17,6 +23,9 @@ survival probability (probability of remaining event-free). Default
 
 \item{id_var}{Character string. Name of the subject ID column.
 Default \code{"ID"}.}
+
+\item{time_var}{Character string. Name of the time column.
+Default \code{"time"}.}
 
 \item{xdata}{Optional data frame of additional covariates to merge
 into the output. Must contain a column matching \code{id_var}.}
@@ -45,4 +54,14 @@ mock_dat <- data.frame(
 )
 result <- sim_tte_df(mock_dat)
 head(result)
+
+# Custom column names
+mock_dat2 <- data.frame(
+  subj = rep(101:103, each = 50),
+  tgrid = rep(seq(0.1, 10, length.out = 50), 3),
+  surv = rep(exp(-0.3 * seq(0.1, 10, length.out = 50)), 3)
+)
+result2 <- sim_tte_df(mock_dat2, surv_var = "surv",
+  id_var = "subj", time_var = "tgrid")
+head(result2)
 }

@@ -1,3 +1,12 @@
+# simtte 1.0.2
+
+* Fixed time-column position bug in `sim_tte_df()`: time is now resolved by
+  column name, not position.
+* Preserved original subject IDs in output (no longer renumbered).
+* Corrected `.get_tte()` to use the conventional `<= U` inverse-transform
+  boundary rule.
+* Added optional `time_var` argument to `sim_tte_df()`.
+
 # simtte 1.0.1
 
 * Fixed issues from CRAN review:

@@ -19,10 +19,5 @@ Useful links:
 \author{
 \strong{Maintainer}: Carlos Traynor \email{carlos.traynor.qcp@gmail.com}
 
-Authors:
-\itemize{
-  \item Carlos Traynor \email{carlos.traynor.qcp@gmail.com}
-}
-
 }
 \keyword{internal}

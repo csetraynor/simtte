@@ -130,12 +130,14 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #'
 #' @param dat Data frame. Output from \code{\link[mrgsolve]{mrgsim}}
 #'   containing at minimum columns for time, subject ID, and survival
-#'   probability.
+#'   probability. Columns are resolved by name (not position).
 #' @param surv_var Character string. Name of the column containing the
 #'   survival probability (probability of remaining event-free). Default
 #'   \code{"p11"}.
 #' @param id_var Character string. Name of the subject ID column.
 #'   Default \code{"ID"}.
+#' @param time_var Character string. Name of the time column.
+#'   Default \code{"time"}.
 #' @param xdata Optional data frame of additional covariates to merge
 #'   into the output. Must contain a column matching \code{id_var}.
 #'
@@ -157,33 +159,80 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #' )
 #' result <- sim_tte_df(mock_dat)
 #' head(result)
+#'
+#' # Custom column names
+#' mock_dat2 <- data.frame(
+#'   subj = rep(101:103, each = 50),
+#'   tgrid = rep(seq(0.1, 10, length.out = 50), 3),
+#'   surv = rep(exp(-0.3 * seq(0.1, 10, length.out = 50)), 3)
+#' )
+#' result2 <- sim_tte_df(mock_dat2, surv_var = "surv",
+#'   id_var = "subj", time_var = "tgrid")
+#' head(result2)
 sim_tte_df <- function(dat,
                        surv_var = "p11",
                        id_var = "ID",
+                       time_var = "time",
                        xdata = NULL) {
-    ID <- NULL
     dat <- as.data.frame(dat)
-    if (surv_var != "p11") {
-        dat$p11 <- dat[[surv_var]]
+
+    # Validate no duplicated column names
+    if (anyDuplicated(names(dat))) {
+        stop("'dat' has duplicated column names.", call. = FALSE)
     }
-    if (id_var != "ID") {
-        dat$ID <- dat[[id_var]]
+    # Validate required columns exist
+    for (v in c(id_var, time_var, surv_var)) {
+        if (!v %in% names(dat)) {
+            stop("Column '", v, "' not found in 'dat'.", call. = FALSE)
+        }
     }
-    if (is.null(xdata)) {
-        xdata <- data.frame(ID = seq_along(unique(dat$ID)))
-    } else {
-        xdata$ID <- xdata[[id_var]]
+    # Validate types
+    if (!is.numeric(dat[[time_var]])) {
+        stop("Column '", time_var, "' must be numeric.", call. = FALSE)
     }
-    covs <- xdata %>% dplyr::group_by(ID) %>% dplyr::group_split()
-    data_splited_id_sim <- dat %>% dplyr::group_by(ID) %>%
-        dplyr::group_split()
-    pred_surv <- mapply(FUN = .simulate_survival, simdat = data_splited_id_sim,
-        id = seq_along(unique(dat$ID)), covs = covs,
-        MoreArgs = list(id_var = "ID"), SIMPLIFY = FALSE)
-    pred_surv <- pred_surv %>% dplyr::bind_rows()
+    if (!is.numeric(dat[[surv_var]])) {
+        stop("Column '", surv_var, "' must be numeric.", call. = FALSE)
+    }
+    # Validate IDs not missing
+    if (anyNA(dat[[id_var]])) {
+        stop("Column '", id_var, "' must not contain missing values.",
+            call. = FALSE)
+    }
+
+    # Canonicalize to internal names: ID, time, p11
+    simdat <- data.frame(
+        ID = dat[[id_var]],
+        time = dat[[time_var]],
+        p11 = dat[[surv_var]]
+    )
+
+    ids <- unique(simdat$ID)
+    data_split <- split(simdat, simdat$ID)
+
+    pred_surv <- lapply(seq_along(ids), function(i) {
+        .simulate_survival_id(data_split[[as.character(ids[i])]], ids[i],
+            "ID")
+    })
+    pred_surv <- dplyr::bind_rows(pred_surv)
     colnames(pred_surv)[1:2] <- c("sim_time", "sim_status")
-    dat <- dplyr::inner_join(pred_surv, xdata, by = colnames(xdata))
-    return(dat)
+
+    if (is.null(xdata)) {
+        return(pred_surv)
+    }
+
+    # Validate xdata
+    xdata <- as.data.frame(xdata)
+    if (anyDuplicated(names(xdata))) {
+        stop("'xdata' has duplicated column names.", call. = FALSE)
+    }
+    if (!id_var %in% names(xdata)) {
+        stop("Column '", id_var, "' not found in 'xdata'.", call. = FALSE)
+    }
+    xdata$ID <- xdata[[id_var]]
+    if (anyDuplicated(xdata$ID)) {
+        stop("'xdata' has duplicated IDs.", call. = FALSE)
+    }
+    dplyr::inner_join(pred_surv, xdata, by = "ID")
 }
 
 #' Simulate Survival for Internal Data Frame Construction
