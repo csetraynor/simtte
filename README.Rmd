@@ -158,7 +158,7 @@ immunotherapy and other treatments with delayed effects.
 
 For each individual, the package solves the Kolmogorov forward equation
 numerically via **mrgsolve** to obtain $S(t)$, then draws $U \sim
-\text{Uniform}(0,1)$ and finds $t^*$ such that $S(t^*) = U$. If $t^* >$
+\text{Uniform}(0,1)$ and finds the first time $t^*$ such that $S(t^*) \le U$. If $t^* >$
 `end_time`, the observation is administratively censored.
 
 ## Function Reference
@@ -199,8 +199,8 @@ vignette("advanced-usage",  package = "simtte")
 If you use **simtte** in published research, please cite:
 
 ```
-Traynor C (2025). simtte: Simulate Time-to-Event Data Using Weibull and
-Spline Models. R package version 1.0.1.
+Traynor C (2026). simtte: Simulate Time-to-Event Data Using Weibull and
+Spline Models. R package version 1.0.2.
 https://CRAN.R-project.org/package=simtte
 ```
 
