@@ -4,6 +4,7 @@
 ^README\.md$
 ^LICENSE\.md$
 ^\.github$
+^\.manuscript$
 ^cran-comments\.md$
 ^codecov\.yml$
 ^\.travis\.yml$

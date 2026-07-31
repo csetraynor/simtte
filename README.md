@@ -14,11 +14,14 @@ downloads](https://cranlogs.r-pkg.org/badges/simtte)](https://CRAN.R-project.org
 2)](https://img.shields.io/badge/License-GPL%20%28%3E%3D%202%29-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 <!-- badges: end -->
 
-**simtte** is an R package for simulating time-to-event (survival)
-datasets for clinical trial design and analysis. It supports Weibull
-parametric models and flexible M-spline baseline hazard models, using
+**simtte** is an R package for simulating bespoke time-to-event
+(survival) datasets for clinical trial design and analysis using
+ordinary differential equation (ODE) models. It provides built-in
+Weibull parametric and flexible M-spline baseline hazard models, and
+supports fully custom hazard models via
 [mrgsolve](https://github.com/metrumresearchgroup/mrgsolve) as the ODE
-solver backend and inverse transform sampling to generate event times.
+solver backend, with inverse transform sampling to generate event
+times.
 
 ## Overview
 
@@ -194,8 +197,8 @@ vignette("advanced-usage",  package = "simtte")
 
 If you use **simtte** in published research, please cite:
 
-    Traynor C (2026). simtte: Simulate Time-to-Event Data Using Weibull and
-    Spline Models. R package version 1.0.2.
+    Traynor C (2026). simtte: Simulate Bespoke Time-to-Event Models Using
+    ODEs. R package version 1.0.2.
     https://CRAN.R-project.org/package=simtte
 
 ## References
