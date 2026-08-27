@@ -11,3 +11,4 @@ inst/doc
 *.Rcheck/
 .Rcheck/
 *md
+.DS_Store
