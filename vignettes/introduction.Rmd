@@ -34,19 +34,29 @@ The Weibull hazard function is:
 $$h(t) = \lambda \cdot \gamma \cdot t^{\gamma - 1}$$
 
 where $\lambda = \exp(\mu + \mathbf{x}'\boldsymbol{\beta})$ is the scale
-and $\gamma$ is the shape parameter.
+and $\gamma$ is the shape parameter. The survival function $S(t) =
+\exp(-\lambda t^\gamma)$ has a closed form, so **simtte** evaluates it
+directly on the reported time grid rather than by numerically integrating
+the survival ODE; this is numerically robust across shape and parameter
+regimes.
 
 ### M-Spline Model
 
 For the flexible model, the baseline hazard is represented as a linear
 combination of M-spline basis functions, allowing complex hazard shapes.
+The hazard value reported at a given time applies from that time until the
+next reported time (a last-observation-carried-forward convention), giving
+a piecewise-constant hazard on the reported grid.
 
 ### Inverse Transform Sampling
 
-Given a survival function $S(t)$, we draw $U \sim \text{Uniform}(0, 1)$
-and find the time $t^*$ such that $S(t^*) = U$. The package solves the
-Kolmogorov forward equation numerically via **mrgsolve** and then applies
-this sampling scheme.
+Given a survival function $S(t)$ reported on the grid supplied via `time`,
+we draw $U \sim \text{Uniform}(0, 1)$ and find the first reported time
+$t^*$ such that $S(t^*) \le U$ (`event_time_method = "grid"`, the
+default). Setting `event_time_method = "log_survival"` instead refines a
+crossing that falls strictly between two reported points by linearly
+interpolating cumulative hazard between them; see "Event-Time
+Interpolation" below.
 
 ## Basic Workflow
 
@@ -84,6 +94,39 @@ result <- sim_tte(
   type = "ms"
 )
 head(result)
+```
+
+### Event-Time Interpolation
+
+`event_time_method` defaults to `"grid"`, which preserves the original
+grid-based event-time resolution shown above. Setting it to
+`"log_survival"` refines a crossing that falls strictly between two
+reported time points; the underlying survival trajectory is unchanged, and
+so is event/censoring classification for the same seed:
+
+```{r log-survival-example, eval = FALSE}
+set.seed(1)
+result_grid <- sim_tte(
+  pi = lp, mu = -1, coefs = 1.1,
+  time = seq(0.1, 100, by = 0.1),
+  type = "weibull", end_time = 100,
+  event_time_method = "grid"           # default
+)
+
+set.seed(1)
+result_interp <- sim_tte(
+  pi = lp, mu = -1, coefs = 1.1,
+  time = seq(0.1, 100, by = 0.1),
+  type = "weibull", end_time = 100,
+  event_time_method = "log_survival"   # sub-grid refinement
+)
+
+# Same seed and trajectory -> identical event/censoring classification.
+identical(result_grid$sim_status, result_interp$sim_status)
+
+# sim_time can differ only where the crossing falls strictly between
+# two reported grid points.
+head(cbind(grid = result_grid$sim_time, log_survival = result_interp$sim_time))
 ```
 
 ## Output Structure

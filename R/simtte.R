@@ -47,6 +47,11 @@
 #'   not extrapolate it in either direction.
 #' @param type Character string. Model type: \code{"weibull"} or
 #'   \code{"ms"} (M-splines). Default \code{"weibull"}.
+#' @param event_time_method Character string. \code{"grid"} (default) or
+#'   \code{"log_survival"}. See "Event-time interpolation" below.
+#'   Forwarded explicitly to \code{\link{sim_tte_df}}; it is unrelated to
+#'   the \pkg{mrgsolve} simulation step and is never passed via
+#'   \code{...}.
 #' @param ... Additional arguments passed to
 #'   \code{\link[mrgsolve]{mrgsim}}. \code{tgrid}, \code{obsonly},
 #'   \code{nocb}, \code{carry_out}/\code{carry.out}, and \code{data} are
@@ -72,12 +77,31 @@
 #'
 #' Event times are then resolved by \code{\link{sim_tte_df}} as the
 #' first grid point at which the survival probability falls to or below
-#' a uniform random draw. No interpolation between grid points is
-#' performed: the resolution of the simulated event time is exactly the
-#' spacing of \code{time}. A subject whose survival never crosses the
-#' threshold on the grid is censored at \code{end_time}. See
-#' \code{\link{sim_tte_df}} for the full contract (this is the function
-#' \code{sim_tte()} delegates to internally).
+#' a uniform random draw. For \code{event_time_method = "grid"} (the
+#' default), no interpolation between grid points is performed: the
+#' resolution of the simulated event time is exactly the spacing of
+#' \code{time}. For \code{event_time_method = "log_survival"}, a crossing
+#' that falls strictly between two grid points is refined by
+#' interpolation; see "Event-time interpolation" below and the
+#' corresponding section of \code{\link{sim_tte_df}} for the full
+#' mathematical contract (this is the function \code{sim_tte()} delegates
+#' to internally, forwarding \code{event_time_method} explicitly). A
+#' subject whose survival never crosses the threshold on the grid is
+#' censored at \code{end_time} under either method.
+#'
+#' @section Event-time interpolation:
+#' See the "Event-time interpolation" section of \code{\link{sim_tte_df}}
+#' for the full mathematical contract and edge-case rules;
+#' \code{sim_tte()} simply forwards \code{event_time_method} to it. In
+#' summary: \code{"log_survival"} assumes the hazard is constant between
+#' consecutive reported trajectory points and linearly interpolates
+#' cumulative hazard accordingly. For the M-spline model this recovers
+#' the event time implied by the discretized (piecewise-constant, via
+#' the "M-spline hazard carry convention" below) hazard exactly. For the
+#' Weibull model with \code{shape != 1}, whose true hazard is not
+#' constant within an interval, it is an approximation whose accuracy
+#' improves as \code{time} is refined (exact when \code{shape == 1}, the
+#' one case where the Weibull hazard genuinely is constant).
 #'
 #' @section M-spline hazard carry convention:
 #' For \code{type = "ms"}, \code{basis \%*\% coefs} gives a baseline
@@ -145,10 +169,12 @@
 #'   coefs = coefs, time = time, type = "ms")
 #' }
 sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
-    time = seq(0, 100, by = 1), end_time, type = "weibull", ...) {
+    time = seq(0, 100, by = 1), end_time, type = "weibull",
+    event_time_method = c("grid", "log_survival"), ...) {
     ID <- NULL
     basehaz <- NULL
     shape <- NULL
+    event_time_method <- match.arg(event_time_method)
 
     if (!is.numeric(pi)) {
         stop("'pi' must be numeric.")
@@ -220,7 +246,8 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
         ...)
     pi <- as.numeric(pi)
     xdata <- data.frame(ID = seq_along(pi), lp = pi)
-    dat <- sim_tte_df(data_sim, id_var = "ID", xdata = xdata)
+    dat <- sim_tte_df(data_sim, id_var = "ID", xdata = xdata,
+        event_time_method = event_time_method)
     return(dat)
 }
 
@@ -243,6 +270,9 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #'   Default \code{"time"}.
 #' @param xdata Optional data frame of additional covariates to merge
 #'   into the output. Must contain a column matching \code{id_var}.
+#' @param event_time_method Character string. \code{"grid"} (default) or
+#'   \code{"log_survival"}. See "Event-time interpolation" below. Partial
+#'   matching is allowed (resolved via \code{\link[base]{match.arg}}).
 #'
 #' @return A data frame with columns:
 #' \describe{
@@ -293,28 +323,55 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #'
 #' @section Censoring and event-time resolution:
 #' For each subject, a uniform random variate \eqn{U \sim
-#' \mathrm{Uniform}(0, 1)} is drawn, and the event time is the
-#' \strong{first reported time} at which survival is at or below
-#' \eqn{U}. This is a grid-based lookup, not interpolation: the
-#' returned time is always one of the times present in \code{dat} for
-#' that subject, never a value between two reported times. If the
-#' first reported observation already satisfies \eqn{S(t_1) \le U},
-#' that first time is returned as the event time; no earlier crossing
-#' is inferred.
+#' \mathrm{Uniform}(0, 1)} is drawn, and the \strong{first reported time}
+#' at which survival is at or below \eqn{U} is located. If the first
+#' reported observation already satisfies \eqn{S(t_1) \le U}, that first
+#' time is returned as the event time; no earlier crossing is inferred,
+#' and this is identical for both values of \code{event_time_method}
+#' (there is no earlier reported point to interpolate from). What happens
+#' next depends on \code{event_time_method}: see "Event-time
+#' interpolation" below. Exactly one \code{stats::runif(1)} is drawn per
+#' subject regardless of \code{event_time_method}.
 #'
 #' If a subject's trajectory never crosses \eqn{U}, that subject is
 #' censored (\code{sim_status = 0}) at the \strong{last reported time
-#' in their own trajectory}, i.e. \code{max(time)} for that subject.
-#' Because this censoring time is subject-specific, \code{sim_tte_df()}
-#' does \strong{not} inherently represent a common administrative
-#' censoring cutoff unless every subject's trajectory happens to share
-#' the same final time — each subject's final observation time is
-#' effectively that subject's own censoring horizon. There is
-#' currently no separate \code{end_time} argument to
-#' \code{sim_tte_df()} itself; \code{\link{sim_tte}} provides one for
-#' its built-in Weibull/M-spline models by ensuring every subject's
-#' generated trajectory is extended to a common \code{end_time} (see
-#' \code{?sim_tte}).
+#' in their own trajectory}, i.e. \code{max(time)} for that subject, for
+#' both values of \code{event_time_method}. Because this censoring time
+#' is subject-specific, \code{sim_tte_df()} does \strong{not} inherently
+#' represent a common administrative censoring cutoff unless every
+#' subject's trajectory happens to share the same final time — each
+#' subject's final observation time is effectively that subject's own
+#' censoring horizon. There is currently no separate \code{end_time}
+#' argument to \code{sim_tte_df()} itself; \code{\link{sim_tte}} provides
+#' one for its built-in Weibull/M-spline models by ensuring every
+#' subject's generated trajectory is extended to a common \code{end_time}
+#' (see \code{?sim_tte}).
+#'
+#' @section Event-time interpolation:
+#' \code{event_time_method = "grid"} (the default) resolves event times
+#' purely by grid-based lookup, not interpolation: the returned time is
+#' always one of the times present in \code{dat} for that subject, never
+#' a value between two reported times.
+#'
+#' \code{event_time_method = "log_survival"} additionally refines a
+#' crossing that occurs strictly after the first reported observation:
+#' it assumes the hazard is constant between the two consecutive reported
+#' trajectory points surrounding the crossing, and linearly interpolates
+#' cumulative hazard (\eqn{H = -\log(S)}) between them accordingly. For
+#' trajectories whose hazard is genuinely piecewise-constant on the
+#' reported grid (e.g. this package's M-spline model; see
+#' \code{\link{sim_tte}}'s "M-spline hazard carry convention"), this
+#' recovers the event time implied by that discretized hazard exactly.
+#' For trajectories generated from a continuously-varying hazard (e.g.
+#' the Weibull model with \code{shape != 1}, or a custom mechanistic
+#' model), it is an approximation whose accuracy improves as the reported
+#' time grid is refined. \code{event_time_method} never changes which
+#' subjects are classified as events vs. censored, and never changes the
+#' returned time for censoring or a first-observation crossing — it can
+#' only change \code{sim_time} for a crossing that falls strictly between
+#' two reported points, and the interpolated time is always within that
+#' interval (never before the earlier point, never after the subject's
+#' final reported time).
 #'
 #' @section Reproducibility:
 #' \code{sim_tte_df()} draws exactly one \code{stats::runif(1)} per
@@ -353,7 +410,9 @@ sim_tte_df <- function(dat,
                        surv_var = "p11",
                        id_var = "ID",
                        time_var = "time",
-                       xdata = NULL) {
+                       xdata = NULL,
+                       event_time_method = c("grid", "log_survival")) {
+    event_time_method <- match.arg(event_time_method)
     dat <- as.data.frame(dat)
 
     if (nrow(dat) == 0L) {
@@ -431,7 +490,7 @@ sim_tte_df <- function(dat,
 
     pred_surv <- lapply(seq_along(ids), function(i) {
         .simulate_survival_id(data_split[[as.character(ids[i])]], ids[i],
-            "ID")
+            "ID", event_time_method = event_time_method)
     })
     pred_surv <- dplyr::bind_rows(pred_surv)
     colnames(pred_surv)[1:2] <- c("sim_time", "sim_status")

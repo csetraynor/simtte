@@ -13,6 +13,7 @@ sim_tte(
   time = seq(0, 100, by = 1),
   end_time,
   type = "weibull",
+  event_time_method = c("grid", "log_survival"),
   ...
 )
 }
@@ -66,6 +67,12 @@ not extrapolate it in either direction.}
 \item{type}{Character string. Model type: \code{"weibull"} or
 \code{"ms"} (M-splines). Default \code{"weibull"}.}
 
+\item{event_time_method}{Character string. \code{"grid"} (default) or
+\code{"log_survival"}. See "Event-time interpolation" below.
+Forwarded explicitly to \code{\link{sim_tte_df}}; it is unrelated to
+the \pkg{mrgsolve} simulation step and is never passed via
+\code{...}.}
+
 \item{...}{Additional arguments passed to
 \code{\link[mrgsolve]{mrgsim}}. \code{tgrid}, \code{obsonly},
 \code{nocb}, \code{carry_out}/\code{carry.out}, and \code{data} are
@@ -100,12 +107,33 @@ silently replaced by \pkg{mrgsolve}'s own default output schedule.
 
 Event times are then resolved by \code{\link{sim_tte_df}} as the
 first grid point at which the survival probability falls to or below
-a uniform random draw. No interpolation between grid points is
-performed: the resolution of the simulated event time is exactly the
-spacing of \code{time}. A subject whose survival never crosses the
-threshold on the grid is censored at \code{end_time}. See
-\code{\link{sim_tte_df}} for the full contract (this is the function
-\code{sim_tte()} delegates to internally).
+a uniform random draw. For \code{event_time_method = "grid"} (the
+default), no interpolation between grid points is performed: the
+resolution of the simulated event time is exactly the spacing of
+\code{time}. For \code{event_time_method = "log_survival"}, a crossing
+that falls strictly between two grid points is refined by
+interpolation; see "Event-time interpolation" below and the
+corresponding section of \code{\link{sim_tte_df}} for the full
+mathematical contract (this is the function \code{sim_tte()} delegates
+to internally, forwarding \code{event_time_method} explicitly). A
+subject whose survival never crosses the threshold on the grid is
+censored at \code{end_time} under either method.
+}
+
+\section{Event-time interpolation}{
+
+See the "Event-time interpolation" section of \code{\link{sim_tte_df}}
+for the full mathematical contract and edge-case rules;
+\code{sim_tte()} simply forwards \code{event_time_method} to it. In
+summary: \code{"log_survival"} assumes the hazard is constant between
+consecutive reported trajectory points and linearly interpolates
+cumulative hazard accordingly. For the M-spline model this recovers
+the event time implied by the discretized (piecewise-constant, via
+the "M-spline hazard carry convention" below) hazard exactly. For the
+Weibull model with \code{shape != 1}, whose true hazard is not
+constant within an interval, it is an approximation whose accuracy
+improves as \code{time} is refined (exact when \code{shape == 1}, the
+one case where the Weibull hazard genuinely is constant).
 }
 
 \section{M-spline hazard carry convention}{

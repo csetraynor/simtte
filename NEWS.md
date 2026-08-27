@@ -1,5 +1,30 @@
 # simtte (development version)
 
+Phase B: opt-in event-time interpolation.
+
+* **New `event_time_method` argument** on `sim_tte_df()` and `sim_tte()`,
+  with two values:
+  * `"grid"` (the default, unchanged): the event time is the first
+    reported trajectory time at which survival falls to or below the
+    sampled uniform draw — exactly the existing behavior, byte-for-byte.
+  * `"log_survival"` (opt-in): when a crossing occurs strictly after the
+    first reported observation, the event time is refined by linear
+    interpolation of cumulative hazard (`H = -log(S)`) between the two
+    reported points surrounding the crossing, i.e. assuming the hazard
+    is constant over that interval. For the M-spline model, whose hazard
+    is genuinely piecewise-constant on the reported grid, this recovers
+    the event time implied by that discretized hazard exactly. For
+    trajectories from a continuously-varying hazard (e.g. Weibull with
+    `shape != 1`, or a custom mechanistic model), it is an approximation
+    that improves as the reported time grid is refined.
+  * Censoring and first-observation crossings are identical between the
+    two methods; exactly one `stats::runif(1)` draw is consumed per
+    subject either way, so classification (event vs. censored) never
+    differs between methods for the same seed and trajectory.
+  * `sim_tte()` forwards `event_time_method` explicitly to its internal
+    `sim_tte_df()` call; it is unrelated to and never passed to the
+    `mrgsolve` simulation step.
+
 Pre-Phase-B hardening pass, resolving findings from an audit of the
 Phase A work (see `PRE_PHASE_B_REPORT.md` for full detail):
 

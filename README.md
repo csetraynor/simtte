@@ -31,12 +31,16 @@ functions. **simtte** addresses this by:
 
 - Providing a unified interface for Weibull and flexible M-spline
   survival simulation.
-- Leveraging **mrgsolve**’s compiled ODE solver for efficient,
-  numerically stable computation of cumulative hazard functions.
+- Leveraging **mrgsolve**’s compiled simulation engine — ODE integration
+  for the M-spline and custom mechanistic hazard models, and a
+  numerically robust closed-form calculation for the built-in Weibull
+  model — for efficient computation of survival trajectories.
 - Supporting user-defined mrgsolve models via `sim_tte_df()` for fully
   custom time-to-event simulation pipelines.
 - Implementing the inverse transform sampling algorithm (Bender et
-  al., 2005) for exact event-time generation.
+  al., 2005) for event-time generation, with an optional sub-grid
+  refinement (`event_time_method = "log_survival"`) for crossings that
+  fall strictly between reported time points.
 
 ## Installation
 
@@ -106,6 +110,41 @@ result <- sim_tte(
 head(result)
 ```
 
+### Event-Time Interpolation
+
+By default, `sim_tte()` and `sim_tte_df()` resolve each event time as
+the first *reported* time at which survival falls to or below a sampled
+uniform draw (`event_time_method = "grid"`). Setting
+`event_time_method = "log_survival"` refines a crossing that falls
+strictly between two reported time points, by linearly interpolating
+cumulative hazard between them, without changing which subjects are
+classified as events versus censored:
+
+``` r
+result_grid <- sim_tte(
+  pi       = lp,
+  mu       = -1,
+  coefs    = 1.1,
+  time     = seq(0.1, 100, by = 0.1),
+  type     = "weibull",
+  end_time = 100,
+  event_time_method = "grid"          # default
+)
+
+result_interp <- sim_tte(
+  pi       = lp,
+  mu       = -1,
+  coefs    = 1.1,
+  time     = seq(0.1, 100, by = 0.1),
+  type     = "weibull",
+  end_time = 100,
+  event_time_method = "log_survival"  # sub-grid refinement
+)
+```
+
+See [Statistical Background](#statistical-background) below for what
+`"log_survival"` assumes and when it is exact rather than approximate.
+
 ### Exploring Prognostic Index Effects
 
 `explore_pi_tq_surv()` quantifies the survival difference at the median
@@ -137,7 +176,14 @@ $$h_i(t) = \exp(\mu + \mathbf{x}_i'\boldsymbol{\beta}) \cdot \gamma \cdot t^{\ga
 
 where $\mu$ is the intercept, $\mathbf{x}_i'\boldsymbol{\beta}$ is the
 linear predictor (prognostic index), and $\gamma > 0$ is the shape
-parameter (`coefs`).
+parameter (`coefs`). The corresponding survival probability
+$S_i(t) = \exp[-\exp(\mu + \mathbf{x}_i'\boldsymbol{\beta}) \cdot t^\gamma]$
+has a closed form, so `simtte` evaluates it directly on the reported
+time grid rather than by numerically integrating the survival ODE; this
+is numerically robust across shape and parameter regimes (including near
+$t = 0$ for $\gamma < 1$, and large intercept/linear-predictor values),
+but it is specific to the Weibull model, not a general continuous-time
+event-root solver.
 
 ### M-Spline (Flexible Parametric) Model
 
@@ -148,18 +194,58 @@ $$h_0(t) = \sum_{k} \alpha_k M_k(t)$$
 
 This approach (Royston & Parmar, 2002) accommodates non-monotone and
 non-proportional hazard shapes, making it suitable for modelling
-immunotherapy and other treatments with delayed effects.
+immunotherapy and other treatments with delayed effects. The hazard is
+supplied to **mrgsolve** as a time-varying input evaluated at the
+elements of `time`; between two consecutive supplied time points, the
+hazard value at the *earlier* point applies (a
+last-observation-carried-forward convention), giving a
+piecewise-constant hazard on the reported grid rather than continuous
+re-evaluation of the M-spline basis at arbitrary times.
 
 ### Inverse Transform Sampling
 
-For each individual, the package solves the Kolmogorov forward equation
-numerically via **mrgsolve** to obtain $S(t)$ on the exact grid supplied
-via `time` (extended to `end_time` if necessary), then draws $U \sim
+For each individual, the package obtains $S(t)$ on the exact grid
+supplied via `time` (extended to `end_time` if necessary, and reported
+by **mrgsolve** at exactly those times via its `tgrid` mechanism — not
+**mrgsolve**’s own default output schedule), then draws $U \sim
 \text{Uniform}(0,1)$ and finds the first *reported* grid time $t^*$ such
-that $S(t^*) \le U$. Event-time resolution is therefore grid-based, not
-interpolated: precision is limited by the spacing of `time`. If no grid
-time satisfies $S(t^*) \le U$, the observation is administratively
-censored at `end_time`.
+that $S(t^*) \le U$. If no grid time satisfies $S(t^*) \le U$, the
+observation is administratively censored at `end_time`. By default
+(`event_time_method = "grid"`), event-time resolution is exactly this
+grid-based lookup, with precision limited by the spacing of `time`; see
+below for the optional refinement.
+
+### Event-Time Interpolation
+
+Setting `event_time_method = "log_survival"` refines a crossing that
+falls strictly between two reported grid points $(t_i, S_i)$ and
+$(t_{i+1}, S_{i+1})$, by linearly interpolating cumulative hazard
+$H(t) = -\log S(t)$ between them and solving for the time at which
+$H(t) = -\log U$. This is equivalent to assuming the hazard is constant
+over $[t_i, t_{i+1})$: for the M-spline model, whose hazard genuinely is
+piecewise constant on the reported grid (see above), this recovers the
+event time implied by that discretized hazard exactly; for a
+continuously varying hazard (the Weibull model with $\gamma \neq 1$, or
+a custom mechanistic model), it is an approximation whose accuracy
+improves as `time` is refined. `event_time_method` never changes which
+subjects are classified as events versus censored, and never changes the
+reported time for censoring or for a crossing already present at the
+first reported observation — it only provides sub-grid event-time
+resolution for an interior crossing, and is not a general
+continuous-time root solver.
+
+### Custom Survival Trajectories
+
+`sim_tte_df()` accepts a user-supplied survival trajectory (e.g. from a
+custom **mrgsolve** model) subject to a validated contract: `time`
+values must be finite, non-negative, and strictly increasing per subject
+(duplicate or unsorted times are rejected, not silently repaired);
+survival values are normalized to $[0, 1]$ (values within a small
+floating-point tolerance of the boundary are clamped, values further
+outside are rejected) and must be non-increasing per subject within the
+same tolerance; and subjects may have different reported time ranges,
+each subject being censored at their own final reported time if no
+crossing occurs.
 
 ## Function Reference
 

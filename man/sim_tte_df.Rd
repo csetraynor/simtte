@@ -9,7 +9,8 @@ sim_tte_df(
   surv_var = "p11",
   id_var = "ID",
   time_var = "time",
-  xdata = NULL
+  xdata = NULL,
+  event_time_method = c("grid", "log_survival")
 )
 }
 \arguments{
@@ -29,6 +30,10 @@ Default \code{"time"}.}
 
 \item{xdata}{Optional data frame of additional covariates to merge
 into the output. Must contain a column matching \code{id_var}.}
+
+\item{event_time_method}{Character string. \code{"grid"} (default) or
+\code{"log_survival"}. See "Event-time interpolation" below. Partial
+matching is allowed (resolved via \code{\link[base]{match.arg}}).}
 }
 \value{
 A data frame with columns:
@@ -89,28 +94,57 @@ different time ranges; see below for what this means for censoring.
 \section{Censoring and event-time resolution}{
 
 For each subject, a uniform random variate \eqn{U \sim
-\mathrm{Uniform}(0, 1)} is drawn, and the event time is the
-\strong{first reported time} at which survival is at or below
-\eqn{U}. This is a grid-based lookup, not interpolation: the
-returned time is always one of the times present in \code{dat} for
-that subject, never a value between two reported times. If the
-first reported observation already satisfies \eqn{S(t_1) \le U},
-that first time is returned as the event time; no earlier crossing
-is inferred.
+\mathrm{Uniform}(0, 1)} is drawn, and the \strong{first reported time}
+at which survival is at or below \eqn{U} is located. If the first
+reported observation already satisfies \eqn{S(t_1) \le U}, that first
+time is returned as the event time; no earlier crossing is inferred,
+and this is identical for both values of \code{event_time_method}
+(there is no earlier reported point to interpolate from). What happens
+next depends on \code{event_time_method}: see "Event-time
+interpolation" below. Exactly one \code{stats::runif(1)} is drawn per
+subject regardless of \code{event_time_method}.
 
 If a subject's trajectory never crosses \eqn{U}, that subject is
 censored (\code{sim_status = 0}) at the \strong{last reported time
-in their own trajectory}, i.e. \code{max(time)} for that subject.
-Because this censoring time is subject-specific, \code{sim_tte_df()}
-does \strong{not} inherently represent a common administrative
-censoring cutoff unless every subject's trajectory happens to share
-the same final time — each subject's final observation time is
-effectively that subject's own censoring horizon. There is
-currently no separate \code{end_time} argument to
-\code{sim_tte_df()} itself; \code{\link{sim_tte}} provides one for
-its built-in Weibull/M-spline models by ensuring every subject's
-generated trajectory is extended to a common \code{end_time} (see
-\code{?sim_tte}).
+in their own trajectory}, i.e. \code{max(time)} for that subject, for
+both values of \code{event_time_method}. Because this censoring time
+is subject-specific, \code{sim_tte_df()} does \strong{not} inherently
+represent a common administrative censoring cutoff unless every
+subject's trajectory happens to share the same final time — each
+subject's final observation time is effectively that subject's own
+censoring horizon. There is currently no separate \code{end_time}
+argument to \code{sim_tte_df()} itself; \code{\link{sim_tte}} provides
+one for its built-in Weibull/M-spline models by ensuring every
+subject's generated trajectory is extended to a common \code{end_time}
+(see \code{?sim_tte}).
+}
+
+\section{Event-time interpolation}{
+
+\code{event_time_method = "grid"} (the default) resolves event times
+purely by grid-based lookup, not interpolation: the returned time is
+always one of the times present in \code{dat} for that subject, never
+a value between two reported times.
+
+\code{event_time_method = "log_survival"} additionally refines a
+crossing that occurs strictly after the first reported observation:
+it assumes the hazard is constant between the two consecutive reported
+trajectory points surrounding the crossing, and linearly interpolates
+cumulative hazard (\eqn{H = -\log(S)}) between them accordingly. For
+trajectories whose hazard is genuinely piecewise-constant on the
+reported grid (e.g. this package's M-spline model; see
+\code{\link{sim_tte}}'s "M-spline hazard carry convention"), this
+recovers the event time implied by that discretized hazard exactly.
+For trajectories generated from a continuously-varying hazard (e.g.
+the Weibull model with \code{shape != 1}, or a custom mechanistic
+model), it is an approximation whose accuracy improves as the reported
+time grid is refined. \code{event_time_method} never changes which
+subjects are classified as events vs. censored, and never changes the
+returned time for censoring or a first-observation crossing — it can
+only change \code{sim_time} for a crossing that falls strictly between
+two reported points, and the interpolated time is always within that
+interval (never before the earlier point, never after the subject's
+final reported time).
 }
 
 \section{Reproducibility}{

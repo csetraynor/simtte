@@ -12,3 +12,4 @@ inst/doc
 .Rcheck/
 *md
 .DS_Store
+^simtte-manuscript-submission$
