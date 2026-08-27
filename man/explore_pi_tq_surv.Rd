@@ -10,23 +10,38 @@ explore_pi_tq_surv(q = 0.5, pi, mu, shape, type, times, basehaz, end_time, ...)
 \item{q}{Numeric scalar. Survival quantile of interest (default 0.5,
 i.e. median survival).}
 
-\item{pi}{Numeric vector. Prognostic index values to evaluate.}
+\item{pi}{Numeric vector. Prognostic index values to evaluate. Must
+be finite.}
 
-\item{mu}{Numeric scalar. Intercept parameter.}
+\item{mu}{Numeric scalar. Intercept parameter. Must be finite.}
 
 \item{shape}{Numeric scalar or vector. Shape parameter(s) for the
-Weibull model.}
+Weibull model. Must be finite and strictly positive.}
 
 \item{type}{Character string. Model type: \code{"weibull"} or
 \code{"ms"}.}
 
-\item{times}{Numeric vector. Time points (M-spline models).}
+\item{times}{Numeric vector. Output time grid; see the "Time grid and
+event-time resolution" and "M-spline hazard carry convention"
+sections of \code{\link{sim_tte}} for the exact contract. For
+M-spline models this must also be the time points corresponding to
+the rows of \code{basehaz}. If missing, defaults to
+\code{seq(0, end_time, by = 1)}.}
 
-\item{basehaz}{Numeric matrix. Baseline hazard (M-spline models).}
+\item{basehaz}{Numeric matrix. Baseline hazard (M-spline models), one
+row per element of \code{times}. Must be finite and non-negative;
+see \code{\link{sim_tte}}'s "M-spline hazard carry convention" for
+how it is interpreted between supplied times.}
 
-\item{end_time}{Numeric scalar. Administrative censoring time.}
+\item{end_time}{Numeric scalar. Administrative censoring time. See
+the \code{end_time} contract documented in \code{\link{sim_tte}}
+(including the M-spline \code{min(times) <= end_time <= max(times)}
+requirement).}
 
-\item{...}{Additional arguments passed to \code{\link[mrgsolve]{mrgsim}}.}
+\item{...}{Additional arguments passed to
+\code{\link[mrgsolve]{mrgsim}}. \code{tgrid}, \code{obsonly},
+\code{nocb}, \code{carry_out}/\code{carry.out}, and \code{data}
+cannot be overridden; see \code{\link{sim_tte}}.}
 }
 \value{
 A data frame including columns \code{lp}, \code{p11},

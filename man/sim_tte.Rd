@@ -10,7 +10,7 @@ sim_tte(
   mu = -3,
   coefs = 0,
   basis = NULL,
-  time = 100,
+  time = seq(0, 100, by = 1),
   end_time,
   type = "weibull",
   ...
@@ -19,34 +19,59 @@ sim_tte(
 \arguments{
 \item{pi}{Numeric matrix or vector. Prognostic index (linear predictor)
 for each individual. Given a covariate matrix X and coefficient
-vector b, \code{pi = X \%*\% b}.}
+vector b, \code{pi = X \%*\% b}. Must be non-empty and finite (no
+\code{NA}/\code{NaN}/\code{Inf}/\code{-Inf}).}
 
 \item{log_pi}{Logical; is the prognostic index already on the log scale?
 Default \code{TRUE}.}
 
-\item{mu}{Numeric scalar. Intercept parameter of the model. Default
-\code{-3}.}
+\item{mu}{Numeric scalar. Intercept parameter of the model. Must be
+finite. Default \code{-3}.}
 
 \item{coefs}{Numeric vector. For M-spline models, the coefficients of
 each spline basis function. For Weibull models, the shape parameter
-(scalar).}
+(scalar), which must be strictly positive. Must be finite in all
+cases.}
 
-\item{basis}{Numeric matrix. Basis matrix for M-spline models.
-Ignored for Weibull models. Default \code{NULL}.}
+\item{basis}{Numeric matrix. Basis matrix for M-spline models, with
+one row per element of \code{time} and one column per coefficient
+in \code{coefs}. Must be finite. Ignored for Weibull models.
+Default \code{NULL}.}
 
-\item{time}{Numeric vector. For M-spline models, the time points
-corresponding to rows of the basis matrix. For Weibull models,
-used only to determine \code{end_time} if not supplied. Default
-\code{100}.}
+\item{time}{Numeric vector. The output time grid: the exact set of
+times at which the survival trajectory is simulated and reported,
+and therefore the set of times at which an event can be detected
+(see "Time grid and event-time resolution" below). For M-spline
+models, \code{time} must additionally be sorted in non-decreasing
+order and have one element per row of \code{basis} (the baseline
+hazard is only defined at these points). Must be non-negative,
+finite, and contain no \code{NA}/\code{NaN}. Default
+\code{seq(0, 100, by = 1)}.}
 
-\item{end_time}{Numeric scalar. Administrative censoring time.
-Defaults to \code{max(time)}.}
+\item{end_time}{Numeric scalar. Administrative censoring horizon.
+Defaults to \code{max(time)}. Any requested \code{time} points
+beyond \code{end_time} are dropped, and \code{end_time} itself is
+always added to the output grid so that censoring lands exactly on
+it. Must be non-negative; \code{end_time = 0} is accepted (a
+degenerate zero-duration follow-up: the output grid is just time 0,
+and since \eqn{S(0) = 1} for every supported model, every subject
+is censored at 0). For Weibull models \code{end_time} may otherwise
+be any non-negative value, including below \code{min(time)} or
+above \code{max(time)} (the closed-form hazard is defined for all
+\code{t >= 0}). For M-spline models \code{end_time} must satisfy
+\code{min(time) <= end_time <= max(time)}: the baseline hazard is
+only defined on the supplied \code{time} grid and this package does
+not extrapolate it in either direction.}
 
 \item{type}{Character string. Model type: \code{"weibull"} or
 \code{"ms"} (M-splines). Default \code{"weibull"}.}
 
 \item{...}{Additional arguments passed to
-\code{\link[mrgsolve]{mrgsim}}.}
+\code{\link[mrgsolve]{mrgsim}}. \code{tgrid}, \code{obsonly},
+\code{nocb}, \code{carry_out}/\code{carry.out}, and \code{data} are
+controlled internally to guarantee the contracts documented here
+and cannot be overridden; supplying them raises an error naming the
+argument.}
 }
 \value{
 A data frame with columns:
@@ -64,6 +89,57 @@ M-spline flexible baseline hazard model. Event times are generated
 via inverse transform sampling from the cumulative hazard function
 computed by \pkg{mrgsolve}.
 }
+\section{Time grid and event-time resolution}{
+
+The output grid used for simulation is \code{sort(unique(time))},
+restricted to values \code{<= end_time}, with \code{end_time}
+appended if it is not already present. \pkg{mrgsolve} is instructed
+to report the survival trajectory \emph{only} at these times (via
+its \code{tgrid} mechanism), so the grid is deterministic and is not
+silently replaced by \pkg{mrgsolve}'s own default output schedule.
+
+Event times are then resolved by \code{\link{sim_tte_df}} as the
+first grid point at which the survival probability falls to or below
+a uniform random draw. No interpolation between grid points is
+performed: the resolution of the simulated event time is exactly the
+spacing of \code{time}. A subject whose survival never crosses the
+threshold on the grid is censored at \code{end_time}. See
+\code{\link{sim_tte_df}} for the full contract (this is the function
+\code{sim_tte()} delegates to internally).
+}
+
+\section{M-spline hazard carry convention}{
+
+For \code{type = "ms"}, \code{basis \%*\% coefs} gives a baseline
+hazard value at each element of \code{time}; this is supplied to
+\pkg{mrgsolve} as a time-varying input, not evaluated as a continuous
+spline function at arbitrary times. The package fixes the piecewise
+interpretation explicitly (\pkg{mrgsolve}'s \code{nocb = FALSE}, i.e.
+last-observation-carried-forward): the hazard value reported at
+\code{time[i]} applies from \code{time[i]} (inclusive) until
+\code{time[i + 1]} (exclusive) -- a right-continuous step function in
+the hazard. Concretely, for knots/hazards \code{time = c(0, 1, 2)},
+\code{basehaz = c(1, 2, 4)}: \eqn{S(0.5) = \exp(-0.5)},
+\eqn{S(1) = \exp(-1)}, \eqn{S(1.5) = \exp(-2)},
+\eqn{S(2) = \exp(-3)} (verified directly against \pkg{mrgsolve}
+output; this is \strong{not} the \pkg{mrgsolve} default, which is
+next-observation-carried-backward and would instead give
+\eqn{S(0.5) = \exp(-1)}).
+
+A consequence of this convention: the hazard value associated with
+the \emph{last} element of \code{time} has no interval after it to
+apply to, so it never affects the survival trajectory (it would only
+matter if \code{end_time} extended past \code{max(time)}, which is
+not permitted; see \code{end_time} above). \code{basis}/\code{coefs}
+therefore define \code{length(time) - 1} active piecewise-constant
+hazard segments, not \code{length(time)}.
+
+This is a grid-based piecewise-constant hazard, not continuous
+M-spline evaluation: the package receives precomputed basis values at
+specific times and never re-evaluates the spline basis at arbitrary
+times.
+}
+
 \examples{
 # Fast Weibull example with a small dataset
 set.seed(1)

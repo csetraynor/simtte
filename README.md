@@ -20,8 +20,7 @@ ordinary differential equation (ODE) models. It provides built-in
 Weibull parametric and flexible M-spline baseline hazard models, and
 supports fully custom hazard models via
 [mrgsolve](https://github.com/metrumresearchgroup/mrgsolve) as the ODE
-solver backend, with inverse transform sampling to generate event
-times.
+solver backend, with inverse transform sampling to generate event times.
 
 ## Overview
 
@@ -154,10 +153,13 @@ immunotherapy and other treatments with delayed effects.
 ### Inverse Transform Sampling
 
 For each individual, the package solves the Kolmogorov forward equation
-numerically via **mrgsolve** to obtain $S(t)$, then draws $U \sim
-\text{Uniform}(0,1)$ and finds the first time $t^*$ such that
-$S(t^*) \le U$. If $t^* >$ `end_time`, the observation is
-administratively censored.
+numerically via **mrgsolve** to obtain $S(t)$ on the exact grid supplied
+via `time` (extended to `end_time` if necessary), then draws $U \sim
+\text{Uniform}(0,1)$ and finds the first *reported* grid time $t^*$ such
+that $S(t^*) \le U$. Event-time resolution is therefore grid-based, not
+interpolated: precision is limited by the spacing of `time`. If no grid
+time satisfies $S(t^*) \le U$, the observation is administratively
+censored at `end_time`.
 
 ## Function Reference
 

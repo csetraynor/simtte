@@ -45,6 +45,89 @@ Applies inverse transform sampling to a data frame produced by an
 This function is useful when you have a custom time-to-event model
 implemented in \pkg{mrgsolve} and want to generate event times.
 }
+\section{Trajectory contract}{
+
+\code{dat} must contain, for each subject, one ordered survival
+trajectory satisfying:
+\itemize{
+  \item at least one row;
+  \item \code{time} values that are non-negative, finite, and
+    strictly increasing within the subject, with no duplicates.
+    Rows are \strong{not} sorted automatically: unsorted or
+    duplicated times raise an error rather than being silently
+    re-ordered or resolved by row order;
+  \item survival probabilities in \eqn{[0, 1]} (a small numerical
+    tolerance of \eqn{10^{-8}} is allowed for floating-point/ODE
+    solver noise: values outside \eqn{[0, 1]} but within this
+    tolerance are accepted and then deterministically \strong{clamped}
+    to exactly \eqn{0} or \eqn{1} before monotonicity checking and
+    event-time selection; values further outside \eqn{[0, 1]} are a
+    hard error, never silently clamped or dropped). This clamping
+    cannot change whether a subject is classified as an event or
+    censored, because \code{stats::runif()} draws from \eqn{[0, 1)}:
+    a raw value already below 0 and its clamped value of exactly 0
+    both satisfy \eqn{value \le U} for every achievable \eqn{U}, and
+    symmetrically a raw value already above 1 and its clamped value
+    of exactly 1 both fail it;
+  \item survival that is non-increasing within the subject (checked
+    on the clamped values). A trajectory that increases by more than
+    the same \eqn{10^{-8}} tolerance at any step is rejected rather
+    than silently repaired, because that pattern cannot arise from a
+    valid survival function and usually indicates a data or model
+    error; an increase within the tolerance is treated as numerical
+    noise and accepted as-is (not further adjusted).
+}
+A trajectory is \strong{not} required to start at survival = 1 or at
+time = 0: \code{sim_tte_df()} never invents an implicit \eqn{S(0) =
+1} state. Whatever survival value is reported at the first observed
+time is used exactly as given (see "Censoring and event-time
+resolution" below for what this implies when that first value is
+already at or below the sampled threshold). Subjects may have
+different time ranges; see below for what this means for censoring.
+}
+
+\section{Censoring and event-time resolution}{
+
+For each subject, a uniform random variate \eqn{U \sim
+\mathrm{Uniform}(0, 1)} is drawn, and the event time is the
+\strong{first reported time} at which survival is at or below
+\eqn{U}. This is a grid-based lookup, not interpolation: the
+returned time is always one of the times present in \code{dat} for
+that subject, never a value between two reported times. If the
+first reported observation already satisfies \eqn{S(t_1) \le U},
+that first time is returned as the event time; no earlier crossing
+is inferred.
+
+If a subject's trajectory never crosses \eqn{U}, that subject is
+censored (\code{sim_status = 0}) at the \strong{last reported time
+in their own trajectory}, i.e. \code{max(time)} for that subject.
+Because this censoring time is subject-specific, \code{sim_tte_df()}
+does \strong{not} inherently represent a common administrative
+censoring cutoff unless every subject's trajectory happens to share
+the same final time — each subject's final observation time is
+effectively that subject's own censoring horizon. There is
+currently no separate \code{end_time} argument to
+\code{sim_tte_df()} itself; \code{\link{sim_tte}} provides one for
+its built-in Weibull/M-spline models by ensuring every subject's
+generated trajectory is extended to a common \code{end_time} (see
+\code{?sim_tte}).
+}
+
+\section{Reproducibility}{
+
+\code{sim_tte_df()} draws exactly one \code{stats::runif(1)} per
+subject, in the order subjects are first encountered in \code{dat}
+(row order), not in ID-sorted order. With a fixed \code{set.seed()},
+results are therefore reproducible \strong{for a fixed row order} of
+\code{dat}, but reordering the rows of \code{dat} so that subjects
+are first encountered in a different sequence changes which random
+draw each subject receives, even with the same seed and the same set
+of per-subject trajectories. This is standard, unmodified R RNG
+behavior (a single shared random stream consumed sequentially), not a
+bug; \code{sim_tte_df()} does not currently use per-subject or
+per-ID RNG streams.
+}
+
 \examples{
 # Create a mock survival probability data frame (no mrgsolve required)
 mock_dat <- data.frame(

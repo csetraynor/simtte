@@ -4,7 +4,7 @@
 ^README\.md$
 ^LICENSE\.md$
 ^\.github$
-^\.manuscript$
+^manuscript$
 ^cran-comments\.md$
 ^codecov\.yml$
 ^\.travis\.yml$
@@ -25,3 +25,6 @@
 ^\.claude$
 ^doc$
 ^Meta$
+^CRAN-SUBMISSION$
+^PHASE_A_REPORT\.md$
+^PRE_PHASE_B_REPORT\.md$
