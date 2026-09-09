@@ -1,11 +1,19 @@
 ## Phase D validation, component 3: compact PK/PD mechanistic validation.
 ##
-## Builds one small custom mrgsolve model (a one-compartment IV-bolus PK
+## Validates a small custom mrgsolve model (a one-compartment IV-bolus PK
 ## model linearly coupled to a hazard, dxdt_p11 = -p11 * HAZ, the same
 ## survival co-integration pattern documented in the manuscript) and
 ## checks that simtte's event-time simulation (via sim_tte_df(), the
 ## function intended for exactly this custom-model workflow) responds
 ## appropriately to the underlying mechanistic trajectory.
+##
+## Phase H update: the model itself is no longer defined inline here. It
+## is now shipped as inst/models/examples/pkpd_linear_hazard.cpp (loaded
+## below via simtte_example_model("pkpd_linear_hazard")) so that this
+## validated definition and the user-facing example file can never
+## silently drift apart. The scientific validation logic below (the
+## analytical reference, tolerances, and checks) is unchanged from the
+## original Phase D version.
 ##
 ## Independent reference: the PK and hazard are chosen so that the
 ## cumulative hazard has a closed form, giving an S(t) that does not
@@ -31,27 +39,12 @@ suppressMessages(library(simtte))
 suppressMessages(library(mrgsolve))
 suppressMessages(library(dplyr))
 
-## ---- Compact PK/PD model --------------------------------------------
+## ---- Compact PK/PD model ----------------------------------------------
+## Shipped example model (inst/models/examples/pkpd_linear_hazard.cpp),
+## loaded through the public simtte_example_model() helper -- the same
+## file and the same loading path a package user would use.
 
-code <- '
-$PARAM CL = 1, V = 10, H0 = 0.3, SLOPE = 0.02
-
-$CMT CENT
-
-$INIT p11 = 1
-
-$MAIN
-double K = CL / V;
-
-$ODE
-double C   = CENT / V;
-double HAZ = H0 - SLOPE * C;
-dxdt_CENT = -K * CENT;
-dxdt_p11  = -p11 * HAZ;
-
-$CAPTURE C HAZ
-'
-mod <- mcode("pkpd_validation", code, quiet = TRUE)
+mod <- simtte_example_model("pkpd_linear_hazard")
 
 analytical_S <- function(t, dose, V, CL, H0, SLOPE) {
     C0 <- dose / V

@@ -52,6 +52,12 @@
 #'   Forwarded explicitly to \code{\link{sim_tte_df}}; it is unrelated to
 #'   the \pkg{mrgsolve} simulation step and is never passed via
 #'   \code{...}.
+#' @param lp_data \code{NULL} (default) or a data frame with columns
+#'   \code{time}, \code{lp}, and optionally \code{ID}, giving a
+#'   time-varying linear predictor \code{lp(t)} for the built-in
+#'   Weibull/M-spline models. See "Time-varying \code{lp(t)}" below.
+#'   \code{NULL} preserves every prior behavior of \code{sim_tte()}
+#'   byte-for-byte.
 #' @param ... Additional arguments passed to
 #'   \code{\link[mrgsolve]{mrgsim}}. \code{tgrid}, \code{obsonly},
 #'   \code{nocb}, \code{carry_out}/\code{carry.out}, and \code{data} are
@@ -133,6 +139,55 @@
 #' specific times and never re-evaluates the spline basis at arbitrary
 #' times.
 #'
+#' @section Time-varying \code{lp(t)}:
+#' Supplying \code{lp_data} allows the linear predictor itself to vary
+#' over time, for both built-in models. \code{lp_data} must contain
+#' \code{time} (finite, non-negative) and \code{lp} (finite; unlike a
+#' hazard, negative values are valid) columns, and, optionally, an
+#' \code{ID} column:
+#' \itemize{
+#'   \item no \code{ID}: a single population-level \eqn{lp(t)}
+#'     trajectory, applied identically to every subject;
+#'   \item \code{ID} present: subject-specific trajectories.
+#'     \code{sort(unique(lp_data$ID))} must equal \code{1:length(pi)}
+#'     exactly (one full trajectory per subject; no partial coverage).
+#' }
+#' In both cases, \code{pi} keeps its existing role as each subject's
+#' baseline linear-predictor offset:
+#' \eqn{lp_{\mathrm{effective}}(t) = pi_i + lp(t)}. \code{lp_data} rows
+#' are not sorted or deduplicated automatically (same philosophy as
+#' \code{\link{sim_tte_df}}'s trajectory contract): unsorted times are
+#' an error; duplicate times are accepted only with an identical
+#' \code{lp} value, otherwise an error. \code{lp(t)} is piecewise
+#' constant under last-observation-carried-forward (the same convention
+#' as \code{basehaz}, above): the value at \code{lp_data$time[i]}
+#' applies from that time until the next \code{lp_data} knot for that
+#' subject. \code{lp_data}'s own time grid is independent of, and need
+#' not coincide with, the main \code{time} argument.
+#'
+#' Coverage requirement: every subject's \code{lp_data} must include an
+#' observation at \code{time = 0} (there is no implicit \eqn{lp(0)}).
+#' For M-spline models, which cannot extrapolate, it must additionally
+#' reach at least \code{end_time}; for Weibull models this is not
+#' required, since the last known \code{lp} value is carried forward for
+#' any remaining follow-up.
+#'
+#' For \code{type = "weibull"}, a separate, distinct model
+#' (\code{weibull_tv}) is used internally whenever \code{lp_data} is
+#' supplied; the constant-\code{lp} closed-form Weibull model
+#' (\code{inst/models/weibull.cpp}) used whenever \code{lp_data} is
+#' \code{NULL} is not modified or replaced. \code{weibull_tv} computes
+#' \eqn{S(t)} by an \strong{exact} closed-form cumulative-hazard
+#' summation over the piecewise-constant \eqn{lp(t)} segments -- it does
+#' not use ODE integration or internal-solver event detection (the
+#' latter was investigated and rejected; see
+#' \code{PHASE_E_THRESHOLD_TRACKING_REPORT.md}) -- so it retains the
+#' same solver-free numerical robustness established for the baseline
+#' model. For \code{type = "ms"}, the existing \code{basehaz(t)}
+#' mechanism and \code{lp(t)} combine as
+#' \eqn{h(t) = basehaz(t) \exp[\mu + lp(t)]}, both under the same
+#' last-observation-carried-forward convention.
+#'
 #' @references
 #' Bender R, Augustin T, Blettner M (2005). Generating survival times to
 #' simulate Cox proportional hazards models. \emph{Statistics in Medicine},
@@ -170,7 +225,7 @@
 #' }
 sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
     time = seq(0, 100, by = 1), end_time, type = "weibull",
-    event_time_method = c("grid", "log_survival"), ...) {
+    event_time_method = c("grid", "log_survival"), lp_data = NULL, ...) {
     ID <- NULL
     basehaz <- NULL
     shape <- NULL
@@ -241,10 +296,22 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
         }
         pi <- log(pi)
     }
+    pi <- as.numeric(pi)
+
+    lp_canonical <- NULL
+    if (!is.null(lp_data)) {
+        lp_canonical <- .canonicalize_lp_data(lp_data, length(pi))
+        .validate_lp_data_trajectories(lp_canonical)
+        .check_lp_data_coverage(lp_canonical, end_time, type)
+        # Combine with the subject-specific baseline offset `pi`, kept
+        # unchanged in its existing role (see "Time-varying lp(t)"
+        # below): lp_effective(t) = pi_i + lp_data_i(t).
+        lp_canonical$lp <- lp_canonical$lp + pi[lp_canonical$ID]
+    }
+
     data_sim <- .sim_surv_df(log_hr = pi, mu = mu, basehaz = basehaz,
         type = type, shape = shape, times = time, end_time = end_time,
-        ...)
-    pi <- as.numeric(pi)
+        lp_data = lp_canonical, ...)
     xdata <- data.frame(ID = seq_along(pi), lp = pi)
     dat <- sim_tte_df(data_sim, id_var = "ID", xdata = xdata,
         event_time_method = event_time_method)
@@ -527,12 +594,20 @@ sim_tte_df <- function(dat,
 #' @param times Numeric vector. Time points for simulation.
 #' @param basehaz Numeric matrix. Baseline hazard values (M-spline only).
 #' @param end_time Numeric scalar. Censoring time.
+#' @param lp_data \code{NULL} (default) or a canonicalized
+#'   \code{data.frame(ID, time, lp)} (see
+#'   \code{\link{.canonicalize_lp_data}}), already combined with each
+#'   subject's baseline \code{pi} offset, giving time-varying
+#'   \code{lp(t)} for the built-in Weibull/M-spline models (see the
+#'   "Time-varying \code{lp(t)}" section of \code{?sim_tte}). When
+#'   \code{NULL}, this function's behavior is byte-for-byte identical to
+#'   before this feature existed.
 #' @param ... Additional arguments passed to \code{\link[mrgsolve]{mrgsim}}.
 #'
 #' @return A data frame of mrgsolve simulation output.
 #' @noRd
 .sim_surv_df <- function(log_hr, mu, shape, type, times, basehaz,
-    end_time, ...) {
+    end_time, lp_data = NULL, ...) {
     # Reject `...` arguments that would silently override the
     # output-grid/trajectory/hazard-carry contract this function
     # guarantees (see ?.RESERVED_MRGSIM_ARGS and Phase pre-B audit).
@@ -576,36 +651,93 @@ sim_tte_df <- function(dat,
     # and event-time resolution" section of ?sim_tte).
     grid <- .resolve_output_grid(times, end_time, type)
 
-    mod_surv <- .read_model_static_cache(type)
-    if (type == "weibull") {
-        ev1 <- as.data.frame(expand.grid(shape, log_hr))
-        colnames(ev1) <- c("shape", "lp")
-        data_surv <- ev1 %>% dplyr::mutate(
-            ID = seq_len(nrow(ev1)), cmt = 0,
-            amt = 0, evid = 1, time = 0, mu = mu,
-            basehaz_id = as.numeric(as.factor(shape)))
-    } else {
-        basehaz_id <- rep(seq_len(ncol(basehaz)), each = nrow(basehaz))
-        ev1 <- expand.grid(c(basehaz), log_hr) %>% as.data.frame()
-        ev1$basehaz_id <- rep(basehaz_id, length(log_hr))
-        colnames(ev1) <- c("basehaz", "lp", "basehaz_id")
-        ev1$time <- c(rep(times, ncol(basehaz) * length(log_hr)))
-        ev1$ID <- c(rep(seq_len(ncol(basehaz) * length(log_hr)),
-            each = nrow(basehaz)))
-        data_surv <- ev1 %>% dplyr::mutate(cmt = 1, amt = 0, evid = 1,
-            mu = mu)
+    if (is.null(lp_data)) {
+        # ---- Constant-lp construction: byte-for-byte unchanged from
+        # every prior phase; this is the entire backward-compatibility
+        # guarantee for the time-varying-lp(t) feature. ----
+        mod_surv <- .read_model_static_cache(type)
+        if (type == "weibull") {
+            ev1 <- as.data.frame(expand.grid(shape, log_hr))
+            colnames(ev1) <- c("shape", "lp")
+            data_surv <- ev1 %>% dplyr::mutate(
+                ID = seq_len(nrow(ev1)), cmt = 0,
+                amt = 0, evid = 1, time = 0, mu = mu,
+                basehaz_id = as.numeric(as.factor(shape)))
+        } else {
+            basehaz_id <- rep(seq_len(ncol(basehaz)), each = nrow(basehaz))
+            ev1 <- expand.grid(c(basehaz), log_hr) %>% as.data.frame()
+            ev1$basehaz_id <- rep(basehaz_id, length(log_hr))
+            colnames(ev1) <- c("basehaz", "lp", "basehaz_id")
+            ev1$time <- c(rep(times, ncol(basehaz) * length(log_hr)))
+            ev1$ID <- c(rep(seq_len(ncol(basehaz) * length(log_hr)),
+                each = nrow(basehaz)))
+            data_surv <- ev1 %>% dplyr::mutate(cmt = 1, amt = 0, evid = 1,
+                mu = mu)
+        }
+        out <- mrgsolve::mrgsim(
+            mrgsolve::data_set(mod_surv, data_surv),
+            carry_out = c("basehaz_id", "lp", "mu", "shape", "basehaz"),
+            tgrid = grid, obsonly = TRUE,
+            # nocb = FALSE (last-observation-carried-forward): the
+            # hazard value reported at time t_i applies from t_i until
+            # the next knot. This only affects the M-spline model (the
+            # Weibull model has no time-varying mrgsolve input); see the
+            # "M-spline hazard carry convention" section of ?sim_tte for
+            # the full contract and rationale.
+            nocb = FALSE, ...)
+        return(as.data.frame(out))
     }
+
+    # ---- Time-varying lp(t) construction (new; PHASE_G_REPORT.md) ----
+    if (type == "weibull") {
+        # weibull_tv.cpp computes S(t) by closed-form segment
+        # accumulation in $TABLE, called once per row of the *internal*
+        # output grid -- which must include every lp(t) knot time, or a
+        # segment could be silently skipped. That internal grid is
+        # reused, unmodified, for the report call below, but the
+        # returned rows are filtered back down to the *documented*
+        # 'grid' before returning, so the public output-grid contract
+        # (?sim_tte "Time grid and event-time resolution") is unchanged.
+        mod_surv <- .read_model_static_cache("weibull_tv")
+        data_surv <- lp_data %>% dplyr::mutate(cmt = 0, amt = 0,
+            evid = 1, mu = mu, shape = shape)
+        internal_grid <- .resolve_output_grid(c(times, lp_data$time),
+            end_time, "weibull")
+        out <- mrgsolve::mrgsim(
+            mrgsolve::data_set(mod_surv, data_surv),
+            carry_out = c("basehaz_id", "lp", "mu", "shape", "basehaz"),
+            tgrid = internal_grid, obsonly = TRUE, nocb = FALSE, ...)
+        out_df <- as.data.frame(out)
+        return(out_df[out_df$time %in% grid, , drop = FALSE])
+    }
+
+    # type == "ms": h(t) = basehaz(t) * exp(mu + lp(t)). basehaz(t) and
+    # lp(t) may be defined on different time grids; both are LOCF-filled
+    # (see .locf_at()) onto their union before being handed to mrgsolve,
+    # so every input row carries a valid value for both covariates (an
+    # mrgsolve data-set requirement, verified directly -- see
+    # PHASE_G_REPORT.md). No merged *reporting* grid is needed here
+    # (unlike the Weibull case above): the M-spline model still
+    # integrates a real ODE, which sees every covariate update via its
+    # own internal solver evaluations regardless of what is reported, so
+    # 'grid' (the user's own documented output grid) is used for
+    # reporting unchanged.
+    mod_surv <- .read_model_static_cache("ms")
+    basehaz_vec <- as.numeric(basehaz)
+    n_subj <- length(log_hr)
+    rows <- lapply(seq_len(n_subj), function(i) {
+        lp_i <- lp_data[lp_data$ID == i, ]
+        merged_t <- sort(unique(c(times, lp_i$time)))
+        bh_at <- .locf_at(times, basehaz_vec, merged_t)
+        lp_at <- .locf_at(lp_i$time, lp_i$lp, merged_t)
+        data.frame(ID = i, time = merged_t, basehaz = bh_at, lp = lp_at,
+            basehaz_id = 1, cmt = 1, amt = 0, evid = 1, mu = mu)
+    })
+    data_surv <- dplyr::bind_rows(rows)
     out <- mrgsolve::mrgsim(
         mrgsolve::data_set(mod_surv, data_surv),
         carry_out = c("basehaz_id", "lp", "mu", "shape", "basehaz"),
-        tgrid = grid, obsonly = TRUE,
-        # nocb = FALSE (last-observation-carried-forward): the hazard
-        # value reported at time t_i applies from t_i until the next
-        # knot. This only affects the M-spline model (the Weibull model
-        # has no time-varying mrgsolve input); see the "M-spline hazard
-        # carry convention" section of ?sim_tte for the full contract
-        # and rationale.
-        nocb = FALSE, ...)
+        tgrid = grid, obsonly = TRUE, nocb = FALSE, ...)
     as.data.frame(out)
 }
 
