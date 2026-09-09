@@ -32,16 +32,20 @@
 }
 
 #' Read and cache mrgsolve model
-#' @param model Character model name ("weibull" or "ms").
+#' @param model Character model name ("weibull", "weibull_tv", or "ms").
+#'   \code{"weibull_tv"} is the time-varying-\code{lp} companion to
+#'   \code{"weibull"} (see \code{inst/models/weibull_tv.cpp}); the
+#'   constant-\code{lp} \code{"weibull"} model itself is unmodified.
 #' @return Compiled mrgsolve model object.
 #' @noRd
 .read_model_static_cache <- function(model) {
     pkg_model_file <- .cfile_dir()
-    if (model == "weibull" || model == "ms") {
+    if (model %in% c("weibull", "weibull_tv", "ms")) {
         mod_surv <- mrgsolve::mread_cache(model = model,
             project = pkg_model_file)
     } else {
-        stop("Model '", model, "' must be 'ms' or 'weibull'.")
+        stop("Model '", model, "' must be 'ms', 'weibull', or ",
+            "'weibull_tv'.")
     }
     return(mod_surv)
 }
@@ -380,4 +384,377 @@
         }
     }
     invisible(TRUE)
+}
+
+#' Canonicalize a time-varying `lp(t)` input to one row per (subject, time)
+#'
+#' Validates the user-supplied \code{lp_data} argument of
+#' \code{\link{sim_tte}} and expands it to the canonical internal
+#' representation: \code{data.frame(ID, time, lp)} covering every
+#' subject \code{1:n_subjects} (the same internal numbering
+#' \code{sim_tte()} already uses for \code{xdata}, i.e.
+#' \code{seq_along(pi)}).
+#'
+#' Two input shapes are accepted:
+#' \itemize{
+#'   \item no \code{ID} column: a single population-level trajectory,
+#'     recycled identically to every subject;
+#'   \item an \code{ID} column present: subject-specific trajectories.
+#'     \code{sort(unique(lp_data$ID))} must equal \code{1:n_subjects}
+#'     exactly (every subject must have a trajectory; no partial
+#'     coverage, no silent recycling of a subset).
+#' }
+#'
+#' No sorting or repair is performed; ordering/duplicate/coverage
+#' validation happens in \code{\link{.validate_lp_data_trajectories}}
+#' and \code{\link{.check_lp_data_coverage}}, called separately once
+#' this function has produced the canonical shape.
+#'
+#' @param lp_data Data frame as documented for \code{\link{sim_tte}}'s
+#'   \code{lp_data} argument.
+#' @param n_subjects Integer. Number of subjects (\code{length(pi)}).
+#' @return \code{data.frame(ID, time, lp)}, one row per supplied
+#'   \code{(subject, time)} pair, \code{ID} always in \code{1:n_subjects}.
+#' @noRd
+.canonicalize_lp_data <- function(lp_data, n_subjects) {
+    lp_data <- as.data.frame(lp_data)
+    if (anyDuplicated(names(lp_data))) {
+        stop("'lp_data' has duplicated column names.", call. = FALSE)
+    }
+    for (v in c("time", "lp")) {
+        if (!v %in% names(lp_data)) {
+            stop("Column '", v, "' not found in 'lp_data'.", call. = FALSE)
+        }
+    }
+    if (!is.numeric(lp_data$time)) {
+        stop("Column 'time' in 'lp_data' must be numeric.", call. = FALSE)
+    }
+    if (!is.numeric(lp_data$lp)) {
+        stop("Column 'lp' in 'lp_data' must be numeric.", call. = FALSE)
+    }
+    if (any(!is.finite(lp_data$time))) {
+        stop("Column 'time' in 'lp_data' must not contain NA, NaN, Inf, ",
+            "or -Inf values.", call. = FALSE)
+    }
+    if (any(lp_data$time < 0)) {
+        stop("Column 'time' in 'lp_data' must not contain negative ",
+            "values.", call. = FALSE)
+    }
+    # lp is a linear predictor, not a hazard: negative and zero values
+    # are valid and expected, only non-finite values are rejected.
+    if (any(!is.finite(lp_data$lp))) {
+        stop("Column 'lp' in 'lp_data' must not contain NA, NaN, Inf, ",
+            "or -Inf values.", call. = FALSE)
+    }
+
+    if ("ID" %in% names(lp_data)) {
+        if (anyNA(lp_data$ID)) {
+            stop("Column 'ID' in 'lp_data' must not contain missing ",
+                "values.", call. = FALSE)
+        }
+        supplied_ids <- sort(unique(lp_data$ID))
+        expected_ids <- seq_len(n_subjects)
+        if (!identical(as.numeric(supplied_ids), as.numeric(expected_ids))) {
+            stop("'lp_data$ID' must contain exactly one trajectory per ",
+                "subject, with values 1:", n_subjects, " (matching the ",
+                "subject ordering of 'pi'); got IDs: ",
+                paste(supplied_ids, collapse = ", "), ".", call. = FALSE)
+        }
+        out <- data.frame(ID = lp_data$ID, time = lp_data$time,
+            lp = lp_data$lp)
+    } else {
+        out <- do.call(rbind, lapply(seq_len(n_subjects), function(i) {
+            data.frame(ID = i, time = lp_data$time, lp = lp_data$lp)
+        }))
+    }
+    out
+}
+
+#' Validate each subject's `lp(t)` trajectory (ordering, duplicates)
+#'
+#' Mirrors \code{\link{.validate_survival_trajectory}}'s ordering
+#' philosophy for the new `lp(t)` covariate: no silent sorting, no
+#' silent deduplication. Duplicate times are accepted only when the
+#' \code{lp} value at that time is identical for every duplicate (same
+#' policy as \code{\link{.validate_basehaz}}).
+#'
+#' @param lp_canonical Output of \code{\link{.canonicalize_lp_data}}.
+#' @return \code{TRUE}, invisibly, if valid.
+#' @noRd
+.validate_lp_data_trajectories <- function(lp_canonical) {
+    by_id <- split(lp_canonical, lp_canonical$ID)
+    for (id in names(by_id)) {
+        times_i <- by_id[[id]]$time
+        lp_i <- by_id[[id]]$lp
+        if (is.unsorted(times_i)) {
+            stop("'lp_data': 'time' must be sorted in ascending order ",
+                "for subject '", id, "'. lp_data is treated as the ",
+                "covariate-update grid and is not sorted automatically; ",
+                "sort each subject's rows by time before calling ",
+                "sim_tte().", call. = FALSE)
+        }
+        dup <- anyDuplicated(times_i)
+        if (dup) {
+            dup_time <- times_i[dup]
+            vals <- lp_i[times_i == dup_time]
+            if (length(unique(vals)) > 1L) {
+                stop("'lp_data': subject '", id, "' has duplicated time ",
+                    dup_time, " with conflicting lp values (",
+                    paste(unique(vals), collapse = ", "), "). The lp ",
+                    "value at a given time must be unambiguous.",
+                    call. = FALSE)
+            }
+        }
+    }
+    invisible(TRUE)
+}
+
+#' Check `lp_data` covers the requested follow-up horizon
+#'
+#' Every subject's trajectory must include an observation at time 0
+#' (there is no implicit `lp(0)`, mirroring \code{sim_tte_df()}'s
+#' refusal to invent an implicit \eqn{S(0)=1} state -- see
+#' \code{?sim_tte_df}). For M-spline models, which cannot extrapolate a
+#' time-varying input beyond its own supplied grid (the same reasoning
+#' already applied to \code{basehaz} in
+#' \code{\link{.resolve_output_grid}}), the trajectory must also reach
+#' at least \code{end_time}. For Weibull models this upper bound is not
+#' required: the last known \code{lp} value is carried forward (LOCF)
+#' for any remaining follow-up, exactly as the constant-lp baseline
+#' model already allows \code{end_time} to exceed \code{max(time)}
+#' freely.
+#'
+#' @param lp_canonical Output of \code{\link{.canonicalize_lp_data}}.
+#' @param end_time Numeric scalar.
+#' @param type Character. \code{"weibull"} or \code{"ms"}.
+#' @return \code{TRUE}, invisibly, if valid.
+#' @noRd
+.check_lp_data_coverage <- function(lp_canonical, end_time, type) {
+    by_id <- split(lp_canonical, lp_canonical$ID)
+    for (id in names(by_id)) {
+        times_i <- by_id[[id]]$time
+        if (!(0 %in% times_i)) {
+            stop("'lp_data' must include an observation at time = 0 for ",
+                "subject '", id, "'; sim_tte() does not invent an ",
+                "implicit lp(0).", call. = FALSE)
+        }
+        if (type == "ms" && max(times_i) < end_time) {
+            stop("'lp_data' must cover the requested follow-up horizon ",
+                "for subject '", id, "': max(time) (", max(times_i),
+                ") is less than end_time (", end_time, "). The M-spline ",
+                "model cannot extrapolate a time-varying 'lp' beyond ",
+                "its own supplied grid, the same restriction already ",
+                "applied to 'basehaz'; supply 'lp_data' covering the ",
+                "full follow-up period.", call. = FALSE)
+        }
+    }
+    invisible(TRUE)
+}
+
+#' Last-observation-carried-forward lookup
+#'
+#' For each element of \code{query_times}, returns the value from the
+#' largest \code{known_times} entry that is \code{<= query_time} --
+#' i.e. the R-side equivalent of mrgsolve's \code{nocb = FALSE}
+#' covariate carry rule, used to pre-fill a second, independently-timed
+#' covariate onto a merged grid before both are handed to
+#' \code{mrgsolve::data_set()} (verified necessary: mrgsolve requires
+#' every input row to carry a value for every covariate column; see
+#' PHASE_G_REPORT.md). Query times before \code{min(known_times)} use
+#' the first known value (backward-fill), matching \code{mrgsim()}'s own
+#' \code{filbak} default and avoiding \code{NA} propagation into the
+#' compiled model.
+#'
+#' @param known_times,known_values Numeric vectors, same length, sorted
+#'   ascending by \code{known_times} (not re-sorted here -- callers
+#'   already have validated, sorted per-subject trajectories).
+#' @param query_times Numeric vector of times to evaluate at.
+#' @return Numeric vector, same length as \code{query_times}.
+#' @noRd
+.locf_at <- function(known_times, known_values, query_times) {
+    idx <- findInterval(query_times, known_times)
+    idx[idx == 0L] <- 1L
+    known_values[idx]
+}
+
+# ---------------------------------------------------------------------
+# sim_tte_ode() Phase 1 helpers (reports/03_implementation_plan.md
+# Phase 1; see reports/02_technical_design.md section 2 for the
+# in-solver event-detection mechanism these support).
+# ---------------------------------------------------------------------
+
+#' Path to installed sim_tte_ode() library models
+#' @return Character path.
+#' @noRd
+.ode_library_dir <- function() {
+    system.file("models", "library", package = "simtte")
+}
+
+#' Map a public sim_tte_ode() model name to its library file basename
+#'
+#' Kept as a tiny, explicit lookup (not a naming convention every future
+#' file must follow) so the public, user-facing name
+#' (\code{\link{sim_tte_library_models}}) can stay short while each
+#' shipped file keeps a descriptive, \code{_ode}-suffixed name
+#' distinguishing it from the closed-form engine models
+#' (\code{weibull.cpp} etc.) that live one directory up. Phase 5's
+#' directory-scan dispatch (\code{03_implementation_plan.md}) is
+#' expected to replace this map with plain file discovery once more
+#' than a handful of names exist.
+#' @noRd
+.ODE_LIBRARY_FILES <- c(exponential = "exponential_ode")
+
+#' Load (and cache) a bundled sim_tte_ode() library model
+#' @param model Character. One of \code{\link{sim_tte_library_models}}.
+#' @return Compiled mrgsolve model object.
+#' @noRd
+.read_ode_library_model <- function(model) {
+    file <- unname(.ODE_LIBRARY_FILES[model])
+    mrgsolve::mread_cache(model = file, project = .ode_library_dir())
+}
+
+#' Validate the sim_tte_ode() model contract
+#'
+#' A model usable by \code{\link{sim_tte_ode}} must expose a \code{p11}
+#' survival compartment and \code{U}/\code{END} parameters (populated
+#' either by a \code{$PARAM} default, \code{param =}, or per-subject
+#' \code{idata}; all three ultimately require the name to already be a
+#' declared model parameter, which is what is checked here). This is an
+#' explicit-contract check, not auto-injection (design report section
+#' 5.2): a model failing this check is rejected with an informative
+#' error, never silently patched. Reused unchanged from Phase 1 onward,
+#' including once a user-supplied \code{mrgmod} is accepted (Phase 5).
+#'
+#' @param mod A compiled mrgsolve model object.
+#' @return \code{TRUE}, invisibly, if the contract is satisfied.
+#' @noRd
+.validate_ode_model_contract <- function(mod) {
+    cmts <- names(mrgsolve::init(mod))
+    if (!"p11" %in% cmts) {
+        stop("This mrgsolve model has no 'p11' compartment. ",
+            "sim_tte_ode() requires a survival compartment named 'p11' ",
+            "with dxdt_p11 = -p11 * HAZ; see ?sim_tte_ode.", call. = FALSE)
+    }
+    pars <- names(mrgsolve::param(mod))
+    missing_pars <- setdiff(c("U", "END"), pars)
+    if (length(missing_pars)) {
+        stop("This mrgsolve model is missing required parameter(s): ",
+            paste(missing_pars, collapse = ", "), ". sim_tte_ode() ",
+            "requires 'U' (the per-subject uniform draw) and 'END' ",
+            "(the administrative censoring horizon) to be declared ",
+            "$PARAM entries; see ?sim_tte_ode.", call. = FALSE)
+    }
+    invisible(TRUE)
+}
+
+#' Build/validate the idata table for sim_tte_ode()
+#'
+#' Canonicalizes \code{idata} to a data frame with \code{ID}, \code{U},
+#' and \code{END} columns. Missing \code{U} is drawn as one independent
+#' \code{stats::runif()} value per row (i.e. per subject, since
+#' \code{idata} is one row per \code{ID} by construction) -- "keyed by
+#' ID" in the sense that each row's draw is permanently associated with
+#' that row's \code{ID} from the moment it is drawn, never reassigned by
+#' a later reorder (see the design report section 2.6 and \code{?sim_tte_ode}
+#' "Reproducibility"). Missing \code{END} is filled with \code{end}.
+#'
+#' @param idata \code{NULL} or a data frame with an \code{ID} column.
+#' @param n Integer. Number of subjects, used only when \code{idata} is
+#'   \code{NULL}.
+#' @param end Numeric scalar. Fallback value for a missing \code{END}
+#'   column.
+#' @return A data frame with columns \code{ID}, \code{U}, \code{END}
+#'   (plus any other columns the caller supplied).
+#' @noRd
+.build_ode_idata <- function(idata, n, end) {
+    if (is.null(idata)) {
+        if (!is.numeric(n) || length(n) != 1L || !is.finite(n) ||
+            n < 1 || n != round(n)) {
+            stop("'n' must be a positive integer scalar when 'idata' is ",
+                "not supplied.", call. = FALSE)
+        }
+        idata <- data.frame(ID = seq_len(n))
+    } else {
+        idata <- as.data.frame(idata)
+        if (!"ID" %in% names(idata)) {
+            stop("'idata' must contain an 'ID' column.", call. = FALSE)
+        }
+        if (anyDuplicated(idata$ID)) {
+            stop("'idata' must not contain duplicated 'ID' values.",
+                call. = FALSE)
+        }
+    }
+    if (!"U" %in% names(idata)) {
+        idata$U <- stats::runif(nrow(idata))
+    } else if (any(!is.finite(idata$U)) || any(idata$U < 0) ||
+        any(idata$U >= 1)) {
+        stop("'idata$U' must contain finite values in [0, 1).",
+            call. = FALSE)
+    }
+    if (!"END" %in% names(idata)) {
+        idata$END <- end
+    }
+    idata
+}
+
+#' Resolve sim_tte_ode() event/censoring times from a simulated trajectory
+#'
+#' Applies the censoring rule and refinement step documented in
+#' \code{?sim_tte_ode} ("Boundary guard" / "Event-time refinement") to
+#' the \code{mrgsim()} output of a library model following the
+#' \code{p11}/\code{TEVT}/\code{event_found}/\code{U}/\code{END}
+#' contract (\code{.validate_ode_model_contract()}). Reuses
+#' \code{\link{.normalize_survival}}, \code{\link{.get_tte}}, and
+#' \code{\link{.interpolate_log_survival}} unchanged rather than
+#' reimplementing crossing detection/interpolation -- this is the same
+#' machinery \code{\link{sim_tte_df}} already uses for
+#' \code{event_time_method = "log_survival"}.
+#'
+#' @param traj Data frame: \code{mrgsim()} output with columns \code{ID},
+#'   \code{time}, \code{p11}, \code{TEVT}, \code{event_found}, \code{U},
+#'   \code{END}, one or more rows per subject in ascending \code{time}
+#'   order (mrgsolve's own reporting order; re-sorted defensively below).
+#' @return Data frame with columns \code{ID}, \code{sim_time},
+#'   \code{sim_status}.
+#' @noRd
+.resolve_ode_events <- function(traj) {
+    ids <- unique(traj$ID)
+    rows <- lapply(ids, function(id) {
+        sub <- traj[traj$ID == id, , drop = FALSE]
+        sub <- sub[order(sub$time), ]
+        last <- sub[nrow(sub), ]
+        u_i <- last$U
+        end_i <- last$END
+
+        # Censoring rule (?sim_tte_ode "Boundary guard"): no crossing
+        # latched, or the latched time is >= end -- checked here on the
+        # R side regardless of the in-model SOLVERTIME <= END guard.
+        if (!isTRUE(as.logical(last$event_found)) || last$TEVT >= end_i) {
+            return(data.frame(ID = id, sim_time = end_i, sim_status = 0L))
+        }
+
+        p11 <- .normalize_survival(sub$p11)
+        etime_idx <- .get_tte(u_i, p11)
+        if (etime_idx == -99L) {
+            # Defensive fallback, not expected to be reached: `end` is
+            # always a reported row (.resolve_output_grid()) and p11 is
+            # monotonically non-increasing, so a latched pre-`end` event
+            # implies some reported row has p11 <= U by the time `end`
+            # is reached. Falls back to the raw (already < end_i, by the
+            # check above) in-solver estimate.
+            sim_time <- last$TEVT
+        } else if (etime_idx == 1L) {
+            # Crossing already present at the first reported observation
+            # -- no earlier point to interpolate from (identical rule to
+            # .simulate_survival_id()).
+            sim_time <- sub$time[1]
+        } else {
+            i <- etime_idx - 1L
+            sim_time <- .interpolate_log_survival(t_i = sub$time[i],
+                t_ip1 = sub$time[etime_idx], s_i = p11[i],
+                s_ip1 = p11[etime_idx], u = u_i)
+        }
+        data.frame(ID = id, sim_time = sim_time, sim_status = 1L)
+    })
+    dplyr::bind_rows(rows)
 }
