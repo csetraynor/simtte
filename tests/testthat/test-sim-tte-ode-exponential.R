@@ -298,6 +298,30 @@ test_that("reserved mrgsim() arguments are still rejected via '...'", {
         "tgrid")
 })
 
+test_that(".resolve_ode_events() falls back to raw TEVT if no reported row's p11 <= U (synthetic, should not occur in practice)", {
+    # Direct unit test of the defensive fallback branch documented in
+    # ?sim_tte_ode "Event-time refinement": a hand-crafted trajectory
+    # where event_found/TEVT say an event occurred, but every reported
+    # p11 value stays (implausibly) above U, so .get_tte() can find no
+    # bracket. This should not arise from a real mrgsim() run (the
+    # monotonicity/`end`-is-always-reported argument in
+    # .resolve_ode_events()'s own comments), but the fallback is
+    # unreachable via any other Phase 1 test, so it is exercised here
+    # directly against synthetic input instead of leaving it dead code.
+    traj <- data.frame(
+        ID = c(1, 1, 1),
+        time = c(0, 5, 10),
+        p11 = c(1, 0.9, 0.8),      # never drops to/below U = 0.5
+        TEVT = c(0, 4.2, 4.2),
+        event_found = c(0, 1, 1),
+        U = c(0.5, 0.5, 0.5),
+        END = c(10, 10, 10)
+    )
+    events <- simtte:::.resolve_ode_events(traj)
+    expect_equal(events$sim_status, 1L)
+    expect_equal(events$sim_time, 4.2)   # falls back to raw TEVT
+})
+
 test_that("an unknown model name is rejected via match.arg()", {
     skip_on_cran()
     skip_if_not_installed("mrgsolve")
