@@ -24,6 +24,7 @@
 .*\.tar\.gz$
 ^\.claude$
 ^doc$
+^reports$
 ^Meta$
 ^CRAN-SUBMISSION$
 ^PHASE_A_REPORT\.md$
@@ -34,3 +35,8 @@
 ^PHASE_D_REPORT\.md$
 ^simtte-manuscript-submission$
 ^PHASE_E_REPORT\.md$
+^PHASE_E_THRESHOLD_TRACKING_REPORT\.md$
+^PHASE_F_DESIGN_REPORT\.md$
+^PHASE_G_REPORT\.md$
+^PHASE_H_IMPLEMENTATION_PLAN\.md$
+^PHASE_H_REPORT\.md$

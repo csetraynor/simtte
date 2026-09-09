@@ -5,6 +5,7 @@
 *.Rproj
 inst/doc
 /doc/
+/reports/
 /Meta/
 /manuscript/
 *.pdf

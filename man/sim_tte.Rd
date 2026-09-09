@@ -14,6 +14,7 @@ sim_tte(
   end_time,
   type = "weibull",
   event_time_method = c("grid", "log_survival"),
+  lp_data = NULL,
   ...
 )
 }
@@ -72,6 +73,13 @@ not extrapolate it in either direction.}
 Forwarded explicitly to \code{\link{sim_tte_df}}; it is unrelated to
 the \pkg{mrgsolve} simulation step and is never passed via
 \code{...}.}
+
+\item{lp_data}{\code{NULL} (default) or a data frame with columns
+\code{time}, \code{lp}, and optionally \code{ID}, giving a
+time-varying linear predictor \code{lp(t)} for the built-in
+Weibull/M-spline models. See "Time-varying \code{lp(t)}" below.
+\code{NULL} preserves every prior behavior of \code{sim_tte()}
+byte-for-byte.}
 
 \item{...}{Additional arguments passed to
 \code{\link[mrgsolve]{mrgsim}}. \code{tgrid}, \code{obsonly},
@@ -166,6 +174,57 @@ This is a grid-based piecewise-constant hazard, not continuous
 M-spline evaluation: the package receives precomputed basis values at
 specific times and never re-evaluates the spline basis at arbitrary
 times.
+}
+
+\section{Time-varying \code{lp(t)}}{
+
+Supplying \code{lp_data} allows the linear predictor itself to vary
+over time, for both built-in models. \code{lp_data} must contain
+\code{time} (finite, non-negative) and \code{lp} (finite; unlike a
+hazard, negative values are valid) columns, and, optionally, an
+\code{ID} column:
+\itemize{
+  \item no \code{ID}: a single population-level \eqn{lp(t)}
+    trajectory, applied identically to every subject;
+  \item \code{ID} present: subject-specific trajectories.
+    \code{sort(unique(lp_data$ID))} must equal \code{1:length(pi)}
+    exactly (one full trajectory per subject; no partial coverage).
+}
+In both cases, \code{pi} keeps its existing role as each subject's
+baseline linear-predictor offset:
+\eqn{lp_{\mathrm{effective}}(t) = pi_i + lp(t)}. \code{lp_data} rows
+are not sorted or deduplicated automatically (same philosophy as
+\code{\link{sim_tte_df}}'s trajectory contract): unsorted times are
+an error; duplicate times are accepted only with an identical
+\code{lp} value, otherwise an error. \code{lp(t)} is piecewise
+constant under last-observation-carried-forward (the same convention
+as \code{basehaz}, above): the value at \code{lp_data$time[i]}
+applies from that time until the next \code{lp_data} knot for that
+subject. \code{lp_data}'s own time grid is independent of, and need
+not coincide with, the main \code{time} argument.
+
+Coverage requirement: every subject's \code{lp_data} must include an
+observation at \code{time = 0} (there is no implicit \eqn{lp(0)}).
+For M-spline models, which cannot extrapolate, it must additionally
+reach at least \code{end_time}; for Weibull models this is not
+required, since the last known \code{lp} value is carried forward for
+any remaining follow-up.
+
+For \code{type = "weibull"}, a separate, distinct model
+(\code{weibull_tv}) is used internally whenever \code{lp_data} is
+supplied; the constant-\code{lp} closed-form Weibull model
+(\code{inst/models/weibull.cpp}) used whenever \code{lp_data} is
+\code{NULL} is not modified or replaced. \code{weibull_tv} computes
+\eqn{S(t)} by an \strong{exact} closed-form cumulative-hazard
+summation over the piecewise-constant \eqn{lp(t)} segments -- it does
+not use ODE integration or internal-solver event detection (the
+latter was investigated and rejected; see
+\code{PHASE_E_THRESHOLD_TRACKING_REPORT.md}) -- so it retains the
+same solver-free numerical robustness established for the baseline
+model. For \code{type = "ms"}, the existing \code{basehaz(t)}
+mechanism and \code{lp(t)} combine as
+\eqn{h(t) = basehaz(t) \exp[\mu + lp(t)]}, both under the same
+last-observation-carried-forward convention.
 }
 
 \examples{
