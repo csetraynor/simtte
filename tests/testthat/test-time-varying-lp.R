@@ -312,7 +312,8 @@ test_that("unsorted lp_data times are rejected, not silently sorted", {
 test_that("lp_data missing an observation at time = 0 is rejected", {
     lp_data <- data.frame(ID = 1, time = c(0.5, 1), lp = c(0, 1))
     expect_error(
-        simtte:::.check_lp_data_coverage(lp_data, end_time = 1, type = "weibull"),
+        simtte:::.check_lp_data_coverage(lp_data, end_time = 1,
+            strict_coverage = FALSE),
         "time = 0"
     )
 })
@@ -339,13 +340,40 @@ test_that("negative lp values are allowed (unlike basehaz)", {
 test_that("insufficient M-spline coverage (lp_data does not reach end_time) is rejected", {
     lp_data <- data.frame(ID = 1, time = c(0, 1), lp = c(0, 1))
     expect_error(
-        simtte:::.check_lp_data_coverage(lp_data, end_time = 2, type = "ms"),
+        simtte:::.check_lp_data_coverage(lp_data, end_time = 2,
+            strict_coverage = TRUE),
         "follow-up horizon"
     )
     # The same trajectory is fine for Weibull, which carries forward.
     expect_true(
-        simtte:::.check_lp_data_coverage(lp_data, end_time = 2, type = "weibull")
+        simtte:::.check_lp_data_coverage(lp_data, end_time = 2,
+            strict_coverage = FALSE)
     )
+})
+
+# ---------------------------------------------------------------------
+# Phase 2.5 (reports/04_author_decisions.md "After the test runbook /
+# Phase 2.5", decision 3): `.check_lp_data_coverage()`'s `type` string
+# was replaced by an explicit `strict_coverage` boolean naming the
+# actual behaviour. Direct unit test of both values, independent of
+# which model happens to map to which value at the sim_tte()/
+# sim_tte_ode() call sites (those call sites are exercised above and in
+# test-sim-tte-ode-covariates.R).
+# ---------------------------------------------------------------------
+test_that(".check_lp_data_coverage()'s strict_coverage argument controls only the end_time-reach requirement", {
+    lp_data <- data.frame(ID = 1, time = c(0, 1), lp = c(0, 1))
+    # strict_coverage = FALSE: short trajectories are fine (LOCF).
+    expect_true(simtte:::.check_lp_data_coverage(lp_data, end_time = 100,
+        strict_coverage = FALSE))
+    # strict_coverage = TRUE: same trajectory, now rejected.
+    expect_error(simtte:::.check_lp_data_coverage(lp_data, end_time = 100,
+        strict_coverage = TRUE), "follow-up horizon")
+    # Both values still enforce the time = 0 requirement identically.
+    no_zero <- data.frame(ID = 1, time = c(0.5, 1), lp = c(0, 1))
+    expect_error(simtte:::.check_lp_data_coverage(no_zero, end_time = 1,
+        strict_coverage = TRUE), "time = 0")
+    expect_error(simtte:::.check_lp_data_coverage(no_zero, end_time = 1,
+        strict_coverage = FALSE), "time = 0")
 })
 
 test_that("sim_tte() propagates lp_data validation errors for both model types", {

@@ -302,7 +302,8 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
     if (!is.null(lp_data)) {
         lp_canonical <- .canonicalize_lp_data(lp_data, length(pi))
         .validate_lp_data_trajectories(lp_canonical)
-        .check_lp_data_coverage(lp_canonical, end_time, type)
+        .check_lp_data_coverage(lp_canonical, end_time,
+            strict_coverage = (type == "ms"))
         # Combine with the subject-specific baseline offset `pi`, kept
         # unchanged in its existing role (see "Time-varying lp(t)"
         # below): lp_effective(t) = pi_i + lp_data_i(t).
