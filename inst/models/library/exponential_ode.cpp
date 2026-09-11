@@ -51,23 +51,47 @@ Model file:  exponential_ode.cpp
   // lift it verbatim into a user-supplied mrgsolve model.
   static int    event_found = 0;
   static double TEVT        = 0.0;
+  // Grid-free refinement bracket (Phase 2.5, reports/04_author_decisions.md
+  // "After the test runbook / Phase 2.5"): the solver's own last
+  // pre-crossing evaluation (T_PRE, P_PRE) and the crossing evaluation
+  // itself (TEVT, P_POST), one internal solver step apart -- narrow
+  // enough that interpolating between them makes the constant-hazard-
+  // within-bracket assumption close to exact for any smooth hazard,
+  // independent of the reported output grid (`delta`).
+  static double T_PRE       = 0.0;
+  static double P_PRE       = 1.0;
+  static double P_POST      = 0.0;
 
 [MAIN]
   if (NEWIND <= 1) {
     event_found = 0;
     TEVT = 0.0;
+    T_PRE = 0.0;
+    P_PRE = 1.0;
+    P_POST = 0.0;
   }
 
 [ODE]
   double eta = H0 * exp(lp);
   double HAZ = eta;                 // <- the only model-specific line
   dxdt_p11 = -p11 * HAZ;
+  // Record the last pre-crossing evaluation. The SOLVERTIME >= T_PRE
+  // guard is a monotone update: a rejected/retried step that revisits
+  // an earlier time must not move the bracket backwards.
+  if (!event_found && p11 > U && SOLVERTIME <= END && SOLVERTIME >= T_PRE) {
+    T_PRE = SOLVERTIME;
+    P_PRE = p11;
+  }
   if (!event_found && p11 <= U && SOLVERTIME <= END) {
     event_found = 1;
     TEVT = SOLVERTIME;
+    P_POST = p11;
   }
   // -- END simtte survival scaffolding (ODE half) --------------------
 
 [CAPTURE] @annotated
   TEVT        : Latched in-solver event time (SOLVERTIME at first p11 <= U), or 0 if not yet found
   event_found : One-shot latch flag (1 once an event has been detected, 0 otherwise)
+  T_PRE       : Last pre-crossing solver evaluation time (refinement bracket lower end)
+  P_PRE       : p11 at T_PRE (refinement bracket lower end)
+  P_POST      : p11 at TEVT (refinement bracket upper end), or 0 if not yet found

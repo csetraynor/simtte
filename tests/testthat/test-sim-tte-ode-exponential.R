@@ -2,23 +2,22 @@
 # hazard) library model only. See reports/02_technical_design.md section 2
 # and reports/03_implementation_plan.md Phase 1 for the design this
 # implements, and reports/05_phase1_report.md for results.
-
-binom_tol <- function(p, n, z = 4) {
-    z * sqrt(p * (1 - p) / n)
-}
+#
+# (binom_tol() moved to helper-ode-models.R in Phase 2, shared with
+# test-sim-tte-ode-weibull.R/-gompertz.R.)
 
 # ---------------------------------------------------------------------
 # 1. Analytical agreement (4-SE binomial tolerance), same methodology as
 #    test-weibull-distribution.R / inst/validation/01_weibull_validation.R.
+#    Fast/slow split (interlude session, reports/07_test_runbook.md):
+#    only `n` differs (this model's hazard is exactly constant, so
+#    refinement is exact regardless of `delta`, unlike Weibull/Gompertz
+#    -- see reports/06_phase2_report.md section 4).
 # ---------------------------------------------------------------------
-test_that("sim_tte_ode() exponential matches the closed-form S(t) = exp(-eta*t)", {
-    skip_on_cran()
-    skip_if_not_installed("mrgsolve")
-
+check_exponential_distribution <- function(n) {
     H0 <- 0.15
     lp <- 0.2
     eta <- H0 * exp(lp)
-    n <- 3000
     end <- 20
 
     sim <- sim_tte_ode(model = "exponential", param = list(H0 = H0, lp = lp),
@@ -38,40 +37,44 @@ test_that("sim_tte_ode() exponential matches the closed-form S(t) = exp(-eta*t)"
         expect_lt(abs(p_event_empirical - p_event_analytic),
             binom_tol(p_event_analytic, n), label = paste0("t_j=", t_j))
     }
+}
+
+test_that("sim_tte_ode() exponential matches the closed-form S(t) = exp(-eta*t) [fast]", {
+    skip_on_cran()
+    skip_if_not_installed("mrgsolve")
+    check_exponential_distribution(n = 500)
+})
+test_that("sim_tte_ode() exponential matches the closed-form S(t) = exp(-eta*t) [slow]", {
+    skip_on_cran()
+    skip_if_not_installed("mrgsolve")
+    skip_if_not_slow()
+    check_exponential_distribution(n = 3000)
 })
 
 # ---------------------------------------------------------------------
 # 2. Boundary-guard regression suite: a covariate-update row close to
 #    `end` (the scenario PHASE_E_THRESHOLD_TRACKING_REPORT.md section 10
 #    found violations in), at both 40- and 2000-subject scale. Zero
-#    violations expected with the shipped (guarded) model.
+#    violations expected with the shipped (guarded) model. 40 subjects
+#    is already fast; 2000 is gated.
+#    (.run_ode_boundary_guard_check() lives in helper-ode-models.R,
+#    shared with test-sim-tte-ode-weibull.R/-gompertz.R -- Phase 1
+#    hardcoded this to the exponential model only.)
 # ---------------------------------------------------------------------
-run_boundary_guard_check <- function(n, seed) {
-    set.seed(seed)
-    end <- 10
-    # A covariate-update row 0.05 time units before `end`, updating `lp`
-    # for every subject -- forces the solver to restart its step-size
-    # search close to the administrative horizon (design report section
-    # 2.7), the mechanism PHASE_E_THRESHOLD_TRACKING_REPORT.md's own
-    # M-spline-structure test used to force violations.
-    data <- data.frame(ID = rep(seq_len(n), each = 1), time = end - 0.05,
-        lp = 0.5, evid = 1, amt = 0, cmt = 1)
-    sim <- sim_tte_ode(model = "exponential", param = list(H0 = 0.3),
-        n = n, end = end, delta = 1, data = data, seed = seed)
-    sim$events
-}
-
-test_that("sim_tte_ode() never reports sim_time > end (40 subjects, covariate update near end)", {
+test_that("sim_tte_ode() never reports sim_time > end [fast: 40 subjects, covariate update near end]", {
     skip_on_cran()
     skip_if_not_installed("mrgsolve")
-    events <- run_boundary_guard_check(40, seed = 1001)
+    events <- .run_ode_boundary_guard_check("exponential", list(H0 = 0.3),
+        n = 40, seed = 1001)
     expect_true(all(events$sim_time <= 10 + 1e-9))
 })
 
-test_that("sim_tte_ode() never reports sim_time > end (2000 subjects, covariate update near end)", {
+test_that("sim_tte_ode() never reports sim_time > end [slow: 2000 subjects, covariate update near end]", {
     skip_on_cran()
     skip_if_not_installed("mrgsolve")
-    events <- run_boundary_guard_check(2000, seed = 1002)
+    skip_if_not_slow()
+    events <- .run_ode_boundary_guard_check("exponential", list(H0 = 0.3),
+        n = 2000, seed = 1002)
     expect_true(all(events$sim_time <= 10 + 1e-9))
 })
 
@@ -237,14 +240,16 @@ test_that("refined sim_time has lower mean absolute error than raw TEVT vs. the 
 # ---------------------------------------------------------------------
 # 5. Reproducibility.
 # ---------------------------------------------------------------------
-test_that("same seed gives identical() $events", {
+test_that("same seed gives identical() $events, for every library model", {
     skip_on_cran()
     skip_if_not_installed("mrgsolve")
-    s1 <- sim_tte_ode(model = "exponential", param = list(H0 = 0.1),
-        n = 100, end = 20, delta = 2, seed = 4242)
-    s2 <- sim_tte_ode(model = "exponential", param = list(H0 = 0.1),
-        n = 100, end = 20, delta = 2, seed = 4242)
-    expect_identical(s1$events, s2$events)
+    for (m in names(simtte:::.ODE_LIBRARY_FILES)) {
+        s1 <- sim_tte_ode(model = m, param = .PHASE2_TEST_DEFAULT_PARAM[[m]],
+            n = 100, end = 20, delta = 2, seed = 4242)
+        s2 <- sim_tte_ode(model = m, param = .PHASE2_TEST_DEFAULT_PARAM[[m]],
+            n = 100, end = 20, delta = 2, seed = 4242)
+        expect_identical(s1$events, s2$events, label = m)
+    }
 })
 
 # ---------------------------------------------------------------------
@@ -298,16 +303,13 @@ test_that("reserved mrgsim() arguments are still rejected via '...'", {
         "tgrid")
 })
 
-test_that(".resolve_ode_events() falls back to raw TEVT if no reported row's p11 <= U (synthetic, should not occur in practice)", {
-    # Direct unit test of the defensive fallback branch documented in
-    # ?sim_tte_ode "Event-time refinement": a hand-crafted trajectory
-    # where event_found/TEVT say an event occurred, but every reported
-    # p11 value stays (implausibly) above U, so .get_tte() can find no
-    # bracket. This should not arise from a real mrgsim() run (the
-    # monotonicity/`end`-is-always-reported argument in
-    # .resolve_ode_events()'s own comments), but the fallback is
-    # unreachable via any other Phase 1 test, so it is exercised here
-    # directly against synthetic input instead of leaving it dead code.
+test_that(".resolve_ode_events() falls back to the reported-grid method, and messages once, when the in-solver bracket is unavailable", {
+    # Direct unit test of the Phase 2.5 fallback path (?sim_tte_ode
+    # "Event-time refinement"): a trajectory with no T_PRE/P_PRE/P_POST
+    # columns at all (e.g. a hand-supplied traj, or a model predating
+    # Phase 2.5's scaffolding) forces every event subject through the
+    # pre-Phase-2.5 reported-grid method, with one message naming the
+    # fallback count.
     traj <- data.frame(
         ID = c(1, 1, 1),
         time = c(0, 5, 10),
@@ -317,13 +319,44 @@ test_that(".resolve_ode_events() falls back to raw TEVT if no reported row's p11
         U = c(0.5, 0.5, 0.5),
         END = c(10, 10, 10)
     )
-    events <- simtte:::.resolve_ode_events(traj)
+    expect_message(events <- simtte:::.resolve_ode_events(traj),
+        "1 subject\\(s\\) used the reported-grid refinement fallback")
     expect_equal(events$sim_status, 1L)
-    expect_equal(events$sim_time, 4.2)   # falls back to raw TEVT
+    expect_equal(events$sim_time, 4.2)   # falls back further to raw TEVT
+})
+
+test_that(".resolve_ode_events() falls back per-subject when only some subjects' in-solver brackets are degenerate, and counts them correctly", {
+    # Two subjects, T_PRE/P_PRE/P_POST columns present: subject 1's
+    # bracket is degenerate (T_PRE == TEVT, as documented in
+    # ?sim_tte_ode "Event-time refinement"); subject 2's is a genuine,
+    # narrow, valid bracket. Only subject 1 should fall back, and the
+    # message should count exactly 1, not 2.
+    traj <- data.frame(
+        ID = c(1, 1, 2, 2),
+        time = c(0, 10, 0, 10),
+        p11 = c(1, 0.8, 1, 0.2),
+        TEVT = c(0, 4.2, 0, 3.05),
+        event_found = c(0, 1, 0, 1),
+        T_PRE = c(0, 4.2, 0, 3.0),      # subject 1 degenerate: T_PRE == TEVT
+        P_PRE = c(1, 0.85, 1, 0.51),
+        P_POST = c(0, 0.85, 0, 0.49),
+        U = c(0.5, 0.5, 0.5, 0.5),
+        END = c(10, 10, 10, 10)
+    )
+    expect_message(events <- simtte:::.resolve_ode_events(traj),
+        "1 subject\\(s\\) used the reported-grid refinement fallback")
+    events <- events[order(events$ID), ]
+    expect_equal(events$sim_status, c(1L, 1L))
+    expect_equal(events$sim_time[1], 4.2)                # fallback (raw TEVT)
+    expect_equal(events$sim_time[2], 3.0 + (3.05 - 3.0) * # in-solver bracket
+        (-log(0.5) - (-log(0.51))) / (-log(0.49) - (-log(0.51))),
+        tolerance = 1e-8)
 })
 
 test_that("an unknown model name is rejected via match.arg()", {
     skip_on_cran()
     skip_if_not_installed("mrgsolve")
-    expect_error(sim_tte_ode(model = "weibull", n = 5, end = 10))
+    # "weibull" became a valid model name in Phase 2; use a name that is
+    # not, and will not become, a library model.
+    expect_error(sim_tte_ode(model = "not_a_real_model", n = 5, end = 10))
 })

@@ -15,15 +15,17 @@ sim_tte_ode(
   add = NULL,
   idata = NULL,
   data = NULL,
+  covariates = NULL,
+  beta = NULL,
   seed = NULL,
   keep_trajectory = FALSE,
   ...
 )
 }
 \arguments{
-\item{model}{Character string naming a bundled library model.
-Currently only \code{"exponential"} is implemented. A user-supplied
-compiled \code{mrgmod} is not yet accepted (Phase 5).}
+\item{model}{Character string naming a bundled library model: one of
+\code{"exponential"}, \code{"weibull"}, \code{"gompertz"}. A
+user-supplied compiled \code{mrgmod} is not yet accepted (Phase 5).}
 
 \item{param}{Named list or named numeric vector of population-level
 \code{$PARAM} overrides, forwarded to \code{\link[mrgsolve]{param}}.
@@ -60,9 +62,21 @@ Missing \code{END} is filled with \code{end}. Any other column is
 passed through to \pkg{mrgsolve} as an ordinary per-subject
 covariate/parameter.}
 
-\item{data}{Optional dosing/time-varying-covariate event data,
-forwarded to \code{\link[mrgsolve]{mrgsim}}'s own \code{data}
-argument.}
+\item{data}{Optional dosing event data, forwarded to
+\code{\link[mrgsolve]{mrgsim}}'s own \code{data} argument. If
+\code{covariates} is also supplied, the covariate-update rows built
+from it are appended to \code{data} (see "Time-varying covariates"
+below); either or both may be \code{NULL}.}
+
+\item{covariates}{\code{NULL} (default) or a data frame with a
+\code{time} column, an optional \code{ID} column, and one numeric
+column per name in \code{beta} -- see "Time-varying covariates"
+below.}
+
+\item{beta}{\code{NULL} (default) or a named numeric vector of
+log-linear coefficients, one per column of \code{covariates}
+(\code{lp(t) = sum(beta * covariates(t))}). Required together with
+\code{covariates}; an error if only one of the two is supplied.}
 
 \item{seed}{Optional integer. If supplied, \code{set.seed(seed)} is
 called before \code{U} is drawn.}
@@ -112,9 +126,9 @@ see \code{reports/01_codebase_audit.md} section 4 and
 separate code paths, not two modes of one function.
 }
 \details{
-Only \code{model = "exponential"} (constant hazard) is implemented in
-this phase. Weibull, Gompertz, M-spline, and PK/PD-linked models, and
-an exported model-discovery function analogous to
+\code{model \%in\% c("exponential", "weibull", "gompertz")} are
+implemented as of Phase 2. M-spline and PK/PD-linked models, and an
+exported model-discovery function analogous to
 \code{\link{simtte_example_models}}, are later phases
 (\code{reports/03_implementation_plan.md} Phase 5).
 }
@@ -143,17 +157,101 @@ independent of, the requested output grid and solver tolerance (see
 \code{reports/02_technical_design.md} section 2.4). For every subject
 classified as an event, \code{sim_tte_ode()} therefore refines the
 final \code{sim_time} using the already-validated cumulative-hazard
-interpolation \code{.interpolate_log_survival()} (the same
-method \code{\link{sim_tte_df}} offers as
-\code{event_time_method = "log_survival"}), applied between the two
-\emph{reported} trajectory rows bracketing that subject's own
-\code{U} threshold. \code{TEVT} itself therefore only decides
+interpolation \code{.interpolate_log_survival()} (the same method
+\code{\link{sim_tte_df}} offers as \code{event_time_method =
+"log_survival"}), applied \strong{between the solver's own last
+pre-crossing evaluation and the crossing evaluation itself} -- an
+interval one internal solver step wide, captured directly from the
+model (as of Phase 2.5; \code{reports/08_phase2_5_report.md}), not
+between the two \emph{reported} trajectory rows bracketing \code{U}
+the way Phase 1/2 did it. \code{TEVT} itself therefore only decides
 \strong{whether} a subject had an event before \code{end}; the
 reported \code{sim_time} for an event subject comes from this
-interpolation step, not from the raw \code{TEVT} value (the latter is
-used only as a defensive fallback in the extremely unlikely case that
-no reported row's \code{p11} is at or below \code{U}, which should not
-occur given the grid-construction/monotonicity guarantees above).
+bracket interpolation, not from the raw \code{TEVT} value.
+
+\strong{This makes refinement accuracy independent of \code{delta}/
+\code{add}}: because the bracket is a solver step, not a reporting
+interval, its width (and hence the constant-hazard-within-bracket
+approximation error) does not grow as the requested output grid gets
+coarser -- confirmed directly across \code{delta \in \{4, 1, 0.25\}}
+for Weibull \code{shape = 0.5, 1, 2, 5} and Gompertz
+\code{gamma = +/-}, where Phase 2's grid-based refinement had instead
+gotten \emph{worse} than raw \code{TEVT} at coarse \code{delta} for
+shapes far from 1 (\code{reports/06_phase2_report.md} section 4);
+see \code{reports/08_phase2_5_report.md} for the repeated table.
+\code{delta}/\code{add} therefore now control only the resolution of
+the returned \code{$trajectory} (when \code{keep_trajectory = TRUE})
+and of the reported-grid \emph{fallback} described next -- not the
+accuracy of a refined event time.
+
+The reported-grid method is kept only as a fallback, used for a
+subject when the in-solver bracket is degenerate (its pre-crossing
+evaluation coincides with, or is not earlier than, the crossing
+itself -- not expected to occur for any shipped library model, since
+\code{p11(0) = 1 > U} for every valid \code{U < 1}, but kept as a
+defensive path rather than an unchecked assumption) or unavailable
+(a user-supplied trajectory missing the \code{T_PRE}/\code{P_PRE}/
+\code{P_POST} capture columns). \strong{One \code{message()} is
+emitted per \code{sim_tte_ode()} call whenever any subject falls
+back}, naming how many did; a finer \code{delta}/\code{add} improves
+those subjects' event times specifically (the fallback is exactly
+Phase 1/2's grid-based method, so its accuracy still depends on the
+grid the same way \code{reports/06_phase2_report.md} section 4
+describes). This message never changes the returned result and is
+suppressible with \code{suppressMessages()}, like every guardrail
+message this function emits (see also "Weibull shape support" below).
+}
+
+\section{Time-varying covariates}{
+
+\code{covariates}/\code{beta} generalize \code{sim_tte()}'s
+single-covariate \code{lp_data} mechanism
+(\code{PHASE_F_DESIGN_REPORT.md}/\code{PHASE_G_REPORT.md}) to an
+arbitrary named set: \eqn{lp(t) = \sum_k \beta_k X_k(t)}, computed in
+R and supplied to the model as an ordinary time-varying \code{lp}
+covariate (last-observation-carried-forward, the same convention
+\code{sim_tte()} already uses) -- no library model file needs to
+change to support this, since every one of them already recomputes
+\code{eta = exp(mu + lp)} inside \code{$ODE} (Phase 1). Coverage
+follows the same rule as \code{sim_tte()}'s Weibull \code{lp_data}
+path: every subject's \code{covariates} must include an observation
+at \code{time = 0}; the last known value is carried forward for any
+remaining follow-up (no M-spline-style "must reach \code{end}"
+requirement, since these are genuine ODE models, not a
+piecewise-constant-on-a-fixed-grid closed form). \strong{Limitation}:
+when \code{covariates} has an \code{ID} column, it must equal
+\code{1:nrow(idata)} exactly -- subject-specific covariates for a
+non-default (non-\code{1:n}) subject numbering are not yet supported.
+}
+
+\section{Weibull shape support}{
+
+The closed-form \code{\link{sim_tte}}'s Weibull model has no
+restriction on \code{shape} (an exact analytical expression is
+evaluated at every reported time). This function's \code{"weibull"}
+library model genuinely integrates the Weibull hazard as an ODE
+state, which diverges as \eqn{t \to 0^+} for \code{shape < 1} -- a
+real mathematical property of the hazard, not a floating-point
+artifact (see \code{PHASE_A_REPORT.md} section 4, where integrating
+this exact hazard as an ODE was first found to fail outright for
+small shapes). \code{weibull_ode.cpp} floors the time value used
+\emph{inside the hazard expression only} (never \code{SOLVERTIME}
+itself) at \code{1e-100}, which was verified
+(\code{reports/06_phase2_report.md}, risk R1) to eliminate solver
+failure/\code{NaN}/non-monotone \code{p11} entirely across
+\code{shape} from 0.01 to 10, with accuracy at or below mrgsolve's
+own default solver tolerance for \code{shape >= 0.05}, degrading
+gracefully (larger but still finite, still monotone bias) below that.
+\strong{This model always runs (no error) for any \code{shape > 0}};
+for \code{shape < 0.05} specifically, prefer
+\code{\link{sim_tte}(type = "weibull")} if exactness near \code{t = 0}
+matters more than the in-solver mechanism's other properties. As of
+Phase 2.5, \code{sim_tte_ode()} additionally emits one \code{message()}
+per call when the effective \code{shape} (after \code{param}
+overrides) is below \code{0.05}, pointing back to this section; the
+simulation itself is unaffected (suppressible with
+\code{suppressMessages()}, like the refinement-fallback message
+described above).
 }
 
 \section{Reproducibility}{
