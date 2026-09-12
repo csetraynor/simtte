@@ -25,7 +25,8 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown
+    rmarkdown,
+    splines2
 VignetteBuilder: knitr
 URL: https://github.com/csetraynor/simtte
 BugReports: https://github.com/csetraynor/simtte/issues
