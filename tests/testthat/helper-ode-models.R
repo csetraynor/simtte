@@ -16,6 +16,44 @@
     gompertz = list(mu = -1, gamma = 0.1)
 )
 
+# Phase 3 (reports/09_phase3_report.md): model = "mspline" does not fit
+# the name -> $PARAM-list shape above (it additionally needs
+# knots/coefs/boundary_knots, and its knot count selects which of the
+# three shipped variants is used), so it gets its own small default
+# fixture rather than being forced into .PHASE2_TEST_DEFAULT_PARAM's
+# shape. K = 3 (mspline_ode_k3.cpp) is used as the default variant here
+# for the fastest compile; the other two variants (5, 7) are exercised
+# explicitly where the test is specifically about per-variant behavior
+# (the convention-equivalence test, the R1-style knot-count sweep).
+.MSPLINE_TEST_DEFAULT_ARGS <- list(
+    knots = c(5, 10, 15), coefs = rep(1, 6),
+    param = list(mu = -1)
+)
+
+# Phase 4 (reports/10_phase4_report.md): the six PK/PD-linked models
+# each need a *dosing* data frame (their link quantities -- CP, RESP,
+# RC -- are all at/near a fixed baseline without one, so an undosed run
+# is indistinguishable from the exponential model regardless of beta_*)
+# -- unlike Phase 2/3's models, so they get their own fixtures rather
+# than being forced into .PHASE2_TEST_DEFAULT_PARAM's dosing-free shape.
+.PKPD_TEST_DEFAULT_PARAM <- list(
+    pk_hazard = list(H0 = 0.01, beta_cp = 0.02),
+    irm1_hazard = list(H0 = 0.01, beta_r = 1),
+    irm2_hazard = list(H0 = 0.01, beta_r = 1),
+    irm3_hazard = list(H0 = 0.01, beta_r = 1),
+    irm4_hazard = list(H0 = 0.01, beta_r = 1),
+    tmdd_hazard = list(H0 = 0.01, beta_rc = 0.05)
+)
+.PKPD_MODELS <- names(.PKPD_TEST_DEFAULT_PARAM)
+
+# A single oral bolus at time 0 for every subject, targeting cmt = 1
+# (EV in every one of the six backbones -- see each model's own [CMT]
+# block). Repeated dosing (validation script 12) builds its own regimen
+# rather than reusing this single-dose helper.
+.pkpd_dose_data <- function(n, amt = 100) {
+    data.frame(ID = seq_len(n), time = 0, cmt = 1, amt = amt, evid = 1)
+}
+
 # Boundary-guard regression scenario, generalized (Phase 2) over
 # `model`/`param` rather than copied per model: a covariate-update row
 # 0.05 time units before `end`, updating `lp` for every subject --
@@ -24,12 +62,13 @@
 # PHASE_E_THRESHOLD_TRACKING_REPORT.md's own M-spline-structure test
 # used to force violations. Originally introduced (Phase 1) hardcoded
 # to the exponential model only.
-.run_ode_boundary_guard_check <- function(model, param, n, seed, end = 10) {
+.run_ode_boundary_guard_check <- function(model, param, n, seed, end = 10,
+    ...) {
     set.seed(seed)
     data <- data.frame(ID = seq_len(n), time = end - 0.05, lp = 0.5,
         evid = 1, amt = 0, cmt = 1)
     sim <- sim_tte_ode(model = model, param = param, n = n, end = end,
-        delta = 1, data = data, seed = seed)
+        delta = 1, data = data, seed = seed, ...)
     sim$events
 }
 
@@ -82,9 +121,9 @@ skip_if_not_slow <- function() {
 # categories (boundary guard / analytical-cross-method / R1 sweep), so
 # always runs.
 check_ode_bracket_containment <- function(model, param, n = 300,
-    end = 20, seed = 1) {
+    end = 20, seed = 1, ...) {
     sim <- sim_tte_ode(model = model, param = param, n = n, end = end,
-        delta = 2, keep_trajectory = TRUE, seed = seed)
+        delta = 2, keep_trajectory = TRUE, seed = seed, ...)
     traj <- sim$trajectory
     last <- traj[!duplicated(traj$ID, fromLast = TRUE), ]
     last <- last[match(sim$events$ID, last$ID), ]
@@ -114,11 +153,11 @@ check_ode_bracket_containment <- function(model, param, n = 300,
 # check is targeting.
 check_ode_delta_independence <- function(model, param, n = 300, end = 20,
     seed = 1, delta_coarse = 4, delta_fine = 0.25, tol,
-    max_mismatch_frac = 0.05) {
+    max_mismatch_frac = 0.05, ...) {
     sim_coarse <- sim_tte_ode(model = model, param = param, n = n,
-        end = end, delta = delta_coarse, seed = seed)
+        end = end, delta = delta_coarse, seed = seed, ...)
     sim_fine <- sim_tte_ode(model = model, param = param, n = n,
-        end = end, delta = delta_fine, seed = seed)
+        end = end, delta = delta_fine, seed = seed, ...)
     ev <- sim_coarse$events
     ev_fine <- sim_fine$events[match(ev$ID, sim_fine$events$ID), ]
     n_events <- sum(ev$sim_status == 1L)

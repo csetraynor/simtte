@@ -17,6 +17,9 @@ sim_tte_ode(
   data = NULL,
   covariates = NULL,
   beta = NULL,
+  knots = NULL,
+  boundary_knots = NULL,
+  coefs = NULL,
   seed = NULL,
   keep_trajectory = FALSE,
   ...
@@ -24,16 +27,29 @@ sim_tte_ode(
 }
 \arguments{
 \item{model}{Character string naming a bundled library model: one of
-\code{"exponential"}, \code{"weibull"}, \code{"gompertz"}. A
-user-supplied compiled \code{mrgmod} is not yet accepted (Phase 5).}
+\code{"exponential"}, \code{"weibull"}, \code{"gompertz"},
+\code{"mspline"}, \code{"pk_hazard"}, \code{"irm1_hazard"},
+\code{"irm2_hazard"}, \code{"irm3_hazard"}, \code{"irm4_hazard"},
+\code{"tmdd_hazard"}. A user-supplied compiled \code{mrgmod} is not
+yet accepted (Phase 5).}
 
 \item{param}{Named list or named numeric vector of population-level
 \code{$PARAM} overrides, forwarded to \code{\link[mrgsolve]{param}}.
 \code{U} and \code{END} are ordinarily supplied per subject via
 \code{idata} (see below), not here.}
 
-\item{omega, sigma}{Optional matrices, forwarded to
-\code{\link[mrgsolve]{omat}}/\code{\link[mrgsolve]{smat}}.}
+\item{omega}{Optional square matrix. For a model that already
+declares a matching \code{$OMEGA} block (any user-supplied model
+with its own \code{ETA()} wiring), forwarded to
+\code{\link[mrgsolve]{omat}} as before. For a built-in PK/PD
+hazard-library model with no declared block, applied instead as
+per-subject between-subject variability via \code{idata} columns
+-- see "Between-subject variability" below.}
+
+\item{sigma}{Optional square matrix, forwarded to
+\code{\link[mrgsolve]{smat}}. User-model-only: no built-in library
+model's hazard depends on a residual-error-perturbed quantity, so
+there is no \code{idata}-based analogue for \code{sigma}.}
 
 \item{n}{Integer. Number of subjects. Ignored (and inferred from
 \code{nrow(idata)}) when \code{idata} is supplied.}
@@ -77,6 +93,17 @@ below.}
 log-linear coefficients, one per column of \code{covariates}
 (\code{lp(t) = sum(beta * covariates(t))}). Required together with
 \code{covariates}; an error if only one of the two is supplied.}
+
+\item{knots, boundary_knots, coefs}{Only used (and, together with
+\code{coefs}, required) when \code{model = "mspline"}; an error if
+any is supplied for another \code{model}. \code{knots}: numeric
+vector of interior knots, strictly increasing, strictly inside
+\code{boundary_knots} -- its length selects which shipped
+knot-count variant is used (see "M-spline knot-count variants"
+below). \code{boundary_knots}: numeric \code{c(lower, upper)},
+default \code{c(0, end)}. \code{coefs}: numeric vector of
+non-negative M-spline coefficients, length
+\code{length(knots) + 3} (2 = spline degree, fixed).}
 
 \item{seed}{Optional integer. If supplied, \code{set.seed(seed)} is
 called before \code{U} is drawn.}
@@ -127,9 +154,13 @@ separate code paths, not two modes of one function.
 }
 \details{
 \code{model \%in\% c("exponential", "weibull", "gompertz")} are
-implemented as of Phase 2. M-spline and PK/PD-linked models, and an
-exported model-discovery function analogous to
-\code{\link{simtte_example_models}}, are later phases
+implemented as of Phase 2; \code{model = "mspline"} as of Phase 3 (see
+"M-spline knot-count variants" below); the six PK/PD-linked models
+(\code{"pk_hazard"}, \code{"irm1_hazard"}--\code{"irm4_hazard"},
+\code{"tmdd_hazard"}) as of Phase 4 (see "PK/PD-linked hazard models"
+below). An exported model-discovery function analogous to
+\code{\link{simtte_example_models}}, and a user-supplied compiled
+\code{mrgmod}, are later phases
 (\code{reports/03_implementation_plan.md} Phase 5).
 }
 \section{Boundary guard}{
@@ -173,7 +204,7 @@ bracket interpolation, not from the raw \code{TEVT} value.
 \code{add}}: because the bracket is a solver step, not a reporting
 interval, its width (and hence the constant-hazard-within-bracket
 approximation error) does not grow as the requested output grid gets
-coarser -- confirmed directly across \code{delta \in \{4, 1, 0.25\}}
+coarser -- confirmed directly across \code{delta} of 4, 1, and 0.25
 for Weibull \code{shape = 0.5, 1, 2, 5} and Gompertz
 \code{gamma = +/-}, where Phase 2's grid-based refinement had instead
 gotten \emph{worse} than raw \code{TEVT} at coarse \code{delta} for
@@ -187,10 +218,10 @@ accuracy of a refined event time.
 The reported-grid method is kept only as a fallback, used for a
 subject when the in-solver bracket is degenerate (its pre-crossing
 evaluation coincides with, or is not earlier than, the crossing
-itself -- not expected to occur for any shipped library model, since
-\code{p11(0) = 1 > U} for every valid \code{U < 1}, but kept as a
-defensive path rather than an unchecked assumption) or unavailable
-(a user-supplied trajectory missing the \code{T_PRE}/\code{P_PRE}/
+itself; \code{p11(0) = 1 > U} for every valid \code{U < 1} rules this
+out at \code{t = 0} specifically, but it is not ruled out later in
+integration -- see the next paragraph) or unavailable (a
+user-supplied trajectory missing the \code{T_PRE}/\code{P_PRE}/
 \code{P_POST} capture columns). \strong{One \code{message()} is
 emitted per \code{sim_tte_ode()} call whenever any subject falls
 back}, naming how many did; a finer \code{delta}/\code{add} improves
@@ -200,6 +231,41 @@ grid the same way \code{reports/06_phase2_report.md} section 4
 describes). This message never changes the returned result and is
 suppressible with \code{suppressMessages()}, like every guardrail
 message this function emits (see also "Weibull shape support" below).
+
+\strong{Two fallback-triggering mechanisms have been characterized so
+far, with different remedies}, and the message differentiates them
+(\code{reports/04_author_decisions.md} "After Phase 3" decision 1;
+classified purely from the already-captured bracket columns, no new
+model-side logic): a \strong{Weibull-type} signature (\code{P_POST}
+outside \code{[0, 1]}, a genuine solver overshoot across one large
+internal step -- \code{reports/08_phase2_5_report.md} section 4,
+remedied by a finer \code{delta}/\code{add}), and an
+\strong{M-spline-type} signature (\code{T_PRE == TEVT} exactly, with
+both \code{P_PRE} and \code{P_POST} legitimate probabilities -- a
+same-timestamp, multiple-corrector-iteration degeneracy near a
+locally steep hazard, \code{reports/10_phase4_report.md}, remedied by
+tighter \code{rtol}/\code{atol}, \strong{not} \code{delta}). A
+subject matching neither signature (including every subject when the
+bracket columns are unavailable at all) is reported as unclassified,
+with generic advice. Only the non-zero buckets are named in the
+message.
+
+\strong{A very steep hazard at a coarse \code{delta} can trigger this
+fallback for an entire cohort at once}: mrgsolve/lsoda does not take
+an internal solver step past the next requested output time, so a
+coarse \code{delta} can force one large internal step across a
+region where the hazard changes by orders of magnitude, and a
+trial/corrector evaluation partway through that step can be
+momentarily unphysical -- detected and safely handled by the
+fallback described above, not a silent wrong answer. Measured
+directly for Weibull \code{shape = 5} and \code{shape = 10}
+(\code{reports/08_phase2_5_report.md} section 4): fallback engagement
+drops from 100\% of subjects to 0\% between \code{delta = 1} and
+\code{delta = 0.5} at \code{shape = 10}. The remedy is exactly what
+the fallback message already states: request a finer
+\code{delta}/\code{add}. This is a named, disclosed, non-blocking
+regime, not a separate guardrail (Phase 2.5's own fallback message
+already covers it).
 }
 
 \section{Time-varying covariates}{
@@ -254,6 +320,139 @@ simulation itself is unaffected (suppressible with
 described above).
 }
 
+\section{M-spline knot-count variants}{
+
+\code{model = "mspline"} evaluates a degree-2 (quadratic) normalized
+M-spline basis (Ramsay 1988 scaling, matching
+\code{splines2::mSpline(..., degree = 2, intercept = TRUE)} exactly
+-- verified to floating-point precision, \code{reports/09_phase3_report.md}
+section 1) \strong{inside the compiled model, in C++}, not as a
+precomputed covariate the way \code{\link{sim_tte}(type = "ms")}
+does: \code{HAZ = eta * sum_m coefs[m] * M_m(t)}, a genuinely
+continuous, smooth hazard, integrated as a real \code{$ODE} state
+like every other \code{sim_tte_ode()} model (chosen specifically so
+Phase 2.5's in-solver bracket refinement, which assumes a smooth
+hazard, applies to the M-spline model too -- a piecewise-constant
+covariate does not give that).
+
+Because the basis is compiled in, only a small, fixed set of
+interior-knot counts is shipped (\strong{3, 5, or 7} interior knots;
+\code{reports/02_technical_design.md} section 4 option 1's "moderate,
+fixed set" compromise) -- \code{length(knots)} selects which shipped
+variant is used; any other count errors, naming the supported counts
+and pointing to \code{\link{sim_tte}(type = "ms")}, which accepts an
+arbitrary knot count (at the cost of being a piecewise-constant
+hazard on its own reporting grid, not a continuous one). \code{knots}
+(interior), \code{boundary_knots} (\code{c(lower, upper)}, default
+\code{c(0, end)}), and \code{coefs} (length \code{length(knots) + 3},
+\strong{non-negative} -- the basis itself is non-negative, so a
+negative coefficient would make the hazard negative) together define
+the same hazard \code{sim_tte(type = "ms")} would produce from a
+\code{splines2::mSpline()} basis built with the same knots/degree and
+\code{coefs} as its own \code{coefs} argument -- knots and
+coefficients are directly portable between the two functions.
+
+No time floor is needed (unlike \code{"weibull"}'s risk R1): the
+M-spline basis is bounded and finite everywhere on
+\code{[boundary_knots[1], boundary_knots[2]]}, including exactly at
+the boundary -- verified directly, not assumed
+(\code{reports/09_phase3_report.md} section 1). The hazard \strong{is}
+identically zero outside that interval, though (a consequence of the
+clamped-knot spline construction): \code{end} (and every
+\code{idata$END}) must not exceed \code{boundary_knots[2]}, enforced
+as an error, not a silent extrapolation -- the same restriction
+\code{sim_tte(type = "ms")}'s own \code{end_time > max(time)} check
+already applies, for the same reason.
+}
+
+\section{PK/PD-linked hazard models}{
+
+Six library models link the hazard to a PK/PD quantity computed by a
+genuine \pkg{mrgsolve} PK/PD backbone (\code{reports/10_phase4_report.md}),
+each reusing an unedited \code{mrgsolve::modlib()} model verbatim and
+adding only the survival scaffold and the hazard link itself (the
+per-model mechanical-edit list is documented at the top of each
+\file{.cpp} file and is the specification for a future model-converter
+utility, \code{reports/04_author_decisions.md} section 6):
+\itemize{
+  \item \code{"pk_hazard"} (backbone \code{"pk2cmt"}): concentration-
+    driven, log-linear: \code{HAZ = H0 * exp(beta_cp * CP)}.
+  \item \code{"irm1_hazard"}--\code{"irm4_hazard"} (backbones
+    \code{"irm1"}--\code{"irm4"}, the four indirect-response types):
+    response-driven, relative to the subject's own pre-dose baseline:
+    \code{HAZ = H0 * exp(beta_r * (RESP / RESP0 - 1))}, where
+    \code{RESP0 = KIN / KOUT}. The sign of \code{beta_r} gives the
+    direction (positive: a response above baseline raises the
+    hazard; negative: it lowers it).
+  \item \code{"tmdd_hazard"} (backbone \code{"tmdd"}): linked to
+    \code{RC}, the drug-target complex, not to free drug
+    concentration -- chosen because \code{RC} is the quantity unique
+    to target-mediated disposition (a \code{CP}-based link would not
+    differ in kind from \code{"pk_hazard"}); \code{HAZ = H0 *
+    exp(beta_rc * RC)}.
+}
+Every one of the six reduces exactly to the exponential model with
+hazard \code{H0} when its \code{beta_*} parameter is 0. Dosing and
+other event data are supplied via this function's existing \code{data}
+argument (\pkg{mrgsolve} event data, e.g. \code{evid}/\code{amt}/
+\code{cmt}/\code{time} rows) exactly as for any \pkg{mrgsolve} model;
+\code{covariates}/\code{beta} (see "Time-varying covariates" above)
+compose with these models unchanged -- \code{lp} is folded into
+\code{eta} the same way the closed-form models do, wherever a given
+backbone itself multiplies a hazard-scale quantity by \code{eta}
+(verified directly, not assumed, for the models where \code{lp} is
+wired into the hazard link this way; see
+\code{reports/10_phase4_report.md}). \pkg{TMDD} is the intentionally
+stiff member of this set (fast binding kinetics next to slow target
+turnover) and is this library's designated steepness stress case.
+}
+
+\section{Between-subject variability}{
+
+\code{omega} adds between-subject variability (BSV) to the
+\strong{structural PK/PD parameters} of the six models above (not
+to \code{H0}/\code{lp}/\code{beta_*}, the hazard-scale parameters
+this package's own scaffold adds): a log-normal draw,
+\eqn{\theta_i = \theta_{pop} \cdot \exp(\eta_i)}, computed in R with
+\code{\link[mrgsolve]{mvgauss}} and supplied as ordinary \code{idata}
+columns -- exactly the mechanism already used for \code{U}
+(\code{reports/11_bsv_review.md} option (b); no model file needs a
+declared \code{$OMEGA} block for this to work). The valid targets
+are every structural parameter of the model's own \pkg{mrgsolve}
+backbone (see each \code{*_hazard.cpp} file's own \code{[PROB]}
+block for the exact list, e.g. \code{pk_hazard}: \code{CL}, \code{V2},
+\code{Q}, \code{V3}, \code{KA}, \code{KA2}, \code{VMAX}, \code{KM}).
+
+\code{omega} may be \strong{named} (matching \code{dimnames}, any
+subset of the model's targets, any order -- e.g. BSV on \code{CL}
+only) or \strong{unnamed} (dimension must equal the full target list,
+applied positionally in the order documented for that model). Population
+values come from the \emph{resolved} parameters (\code{param}
+overrides applied first), so \code{param = list(CL = 3)} together
+with \code{omega} on \code{"CL"} centers the draw on 3. Supplying
+both an \code{idata} column and an \code{omega} target with the same
+name is an error (no silent override in either direction).
+
+\strong{Coexistence with a user-supplied model} (a compiled
+\code{mrgmod} with its own \code{$OMEGA}/\code{ETA()} wiring, Phase 5):
+\code{omega} is dispatched on whether the resolved model already
+declares a matching block. A model that does (any hand-written
+model using the standard \code{TVCL}/\code{ETA()} idiom) goes
+through \code{\link[mrgsolve]{omat}} exactly as before -- unaffected
+by this mechanism. Only a model with \strong{no} declared block
+falls through to the \code{idata} route, and only if it is one of
+the named models above; \code{omega} on any other model (the
+closed-form-style library models, or a user model with neither)
+keeps the existing informative error naming the missing
+\code{$OMEGA} block.
+
+\code{sigma} is unaffected by any of this and stays exactly what it
+was: forwarded to \code{\link[mrgsolve]{smat}}, usable only for a
+model (necessarily user-supplied, for now) that already declares a
+\code{$SIGMA} block -- no built-in library model's hazard depends on
+a residual-error-perturbed quantity.
+}
+
 \section{Reproducibility}{
 
 If \code{idata} does not supply \code{U}, exactly one
@@ -261,6 +460,15 @@ If \code{idata} does not supply \code{U}, exactly one
 subject), in row order, \emph{before} \pkg{mrgsolve} is called. With a
 fixed \code{seed} (or a \code{set.seed()} call by the caller), results
 are therefore reproducible for a fixed \code{idata} row order.
+
+The \code{idata}-based \code{omega} draw ("Between-subject
+variability" above) is likewise reproducible for a fixed \code{seed}
+-- verified directly (not assumed from \pkg{mrgsolve}'s own
+documentation) that \code{\link[mrgsolve]{mvgauss}}'s draw, called
+without its own \code{seed} argument, is insensitive to any
+\code{runif()}/\code{rnorm()} draws made in between (such as the
+\code{U} draw above), so one \code{seed} deterministically
+reproduces both regardless of draw order.
 }
 
 \examples{
