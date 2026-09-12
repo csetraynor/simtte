@@ -182,3 +182,8 @@ result2 <- sim_tte_df(mock_dat2, surv_var = "surv",
   id_var = "subj", time_var = "tgrid")
 head(result2)
 }
+\seealso{
+\code{\link{sim_tte_ode}}, for the in-solver event-detection
+  mechanism (joint PK/PD and time-to-event simulation) this function
+  does not implement.
+}

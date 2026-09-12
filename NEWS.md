@@ -1,6 +1,50 @@
-# simtte (development version)
+# simtte 1.1.0
 
-Phase B: opt-in event-time interpolation.
+New features, fully backward compatible with CRAN 1.0.2 (verified
+directly, `inst/validation/13_backcompat_v1_0_2.R`).
+
+## New features
+
+* **`sim_tte_ode()`: joint PK/PD and time-to-event simulation with
+  in-solver event detection.** The survival probability is added to a
+  PK/PD `mrgsolve` model as one more ODE compartment (`dxdt_p11 = -p11
+  * HAZ`); each subject's event time is located *during* ODE
+  integration, at the first internal solver evaluation where `p11`
+  falls to or below a per-subject uniform draw `U`, rather than
+  resolved afterward from a pre-simulated trajectory (the mechanism
+  `sim_tte_df()` already used). Built-in models: `"exponential"`,
+  `"weibull"`, `"gompertz"`, and `"mspline"` (a quadratic M-spline
+  baseline hazard evaluated continuously inside the compiled model, in
+  one of three shipped interior-knot-count variants: 3, 5, or 7).
+* **Six built-in PK/PD-linked hazard models**: `"pk_hazard"`
+  (concentration-driven), `"irm1_hazard"`-`"irm4_hazard"`
+  (response-driven, the four indirect-response model types),
+  `"tmdd_hazard"` (driven by drug-target complex, target-mediated drug
+  disposition). Each reuses an unedited `mrgsolve::modlib()` PK/PD
+  backbone plus a hazard link; dosing is ordinary `mrgsolve` event data
+  via `sim_tte_ode()`'s `data` argument.
+* **Time-varying covariates for `sim_tte_ode()`** (`covariates`/`beta`):
+  an arbitrary named set of log-linear covariates, `lp(t) = sum_k
+  beta_k * X_k(t)`, generalizing `sim_tte()`'s single-covariate
+  `lp_data` mechanism.
+* **Between-subject variability (`omega`) for the PK/PD hazard
+  library**: a log-normal draw on any subset of a model's own
+  structural PK/PD parameters, applied via per-subject `idata` columns
+  -- no model file needs a declared `$OMEGA` block. A user-supplied
+  model that already declares its own `$OMEGA` (the classic
+  `TVCL`/`ETA()` idiom) goes through `mrgsolve::omat()` instead,
+  automatically.
+* **`tte_model()`: convert your own `mrgsolve` PK/PD model** for use
+  with `sim_tte_ode()`, instead of being limited to the six built-in
+  models. Accepts model code, a file path, or a compiled model; adds
+  the survival compartment and in-solver event-detection scaffolding
+  without editing the model's own `$ODE`/`$DES` content (only
+  `$GLOBAL`/`$MAIN`, which `mrgsolve` allows only one of each, are
+  edited in place). Verified to reproduce all six built-in hazard
+  models exactly when converting their own `mrgsolve::modlib()`
+  backbones.
+
+## Improvements
 
 * **New `event_time_method` argument** on `sim_tte_df()` and `sim_tte()`,
   with two values:
@@ -24,20 +68,62 @@ Phase B: opt-in event-time interpolation.
   * `sim_tte()` forwards `event_time_method` explicitly to its internal
     `sim_tte_df()` call; it is unrelated to and never passed to the
     `mrgsolve` simulation step.
+* **Time-varying `lp(t)` for `sim_tte()`** (`lp_data` argument): a
+  per-subject or population-level log hazard ratio trajectory,
+  last-observation-carried-forward between supplied time points.
+* **Example PK/PD-driven-hazard models** exported for use with
+  `sim_tte_df()`: `simtte_example_model()`/`simtte_example_models()`
+  load/list two bundled, user-editable `mrgsolve` `.cpp` files
+  demonstrating the pattern by hand (superseded, for new work, by
+  `sim_tte_ode()`'s in-solver mechanism and `tte_model()`, but kept as
+  a documented, tested way to use `sim_tte_df()` directly).
+* **Informative `omega`/`sigma` errors.** Calling `sim_tte_ode(...,
+  omega = <matrix>)` (or `sigma =`) on a model with no matching
+  declared block previously surfaced `mrgsolve`'s own cryptic
+  `"improper signature: omat"`; it now explains that `omat()`/`smat()`
+  only update an already-declared block and names what a fix looks
+  like.
 
-Pre-Phase-B hardening pass, resolving findings from an audit of the
-Phase A work (see `PRE_PHASE_B_REPORT.md` for full detail):
+## Bug fixes / behavior changes versus CRAN 1.0.2
 
+* **Weibull closed-form correctness for `shape < 1`.** CRAN 1.0.2's
+  `inst/models/weibull.cpp` approximated the hazard as shape-independent
+  (constant-hazard) for solver time below 0.1, which was substantially
+  wrong for `shape != 1` -- **measured up to 0.16 absolute error** in
+  survival probability for `shape < 1` near `t -> 0` in the tested
+  range. The survival probability is now computed as the exact
+  closed-form expression `S(t) = exp(-exp(mu + lp) * t^shape)`
+  directly, matching the analytical formula to floating-point precision
+  at every reported time, for every `shape > 0`.
+* **`time` argument now actually controls the output grid.**
+  `sim_tte()`'s `time` argument previously only set `end_time` when
+  not supplied explicitly; the real output/event-time grid silently
+  came from `mrgsolve`'s own default schedule (`delta = 1`) regardless
+  of the spacing requested in `time`, for both Weibull and M-spline
+  models. `time` now genuinely determines the simulation output grid
+  via `mrgsolve`'s `tgrid` mechanism. This is a real, and often
+  substantial, change in reported `sim_time` values whenever a caller
+  supplied a `time` grid finer than `delta = 1` (the common case, e.g.
+  the package's own README examples) -- **measured directly in this
+  release's backward-compatibility audit**
+  (`inst/validation/13_backcompat_v1_0_2.R`): 16.6% mean relative
+  difference in `sim_time` for the README Weibull example (`shape =
+  1.1`, itself unaffected by the shape `< 1` fix above), 24.4% for a
+  `shape = 2` case, 3.6% for the README M-spline example. `sim_tte()`'s
+  `time` default also changed from the scalar `100` to `seq(0, 100, by
+  = 1)` (the same effective grid resolution as before when `time` is
+  not supplied, consistent with this fix).
 * **Protected `...`.** `tgrid`, `obsonly`, `nocb`,
   `carry_out`/`carry.out`, and `data` can no longer be overridden via
-  `...` in `sim_tte()`/`explore_pi_tq_surv()`/`.sim_surv_df()`: each was
-  confirmed to silently defeat the package's output-grid or trajectory
-  contract if supplied by a caller. Doing so now raises a clear error
-  naming the argument.
-* **M-spline hazard carry convention fixed and documented.**
+  `...` in `sim_tte()`/`explore_pi_tq_surv()`/`.sim_surv_df()`
+  (or, new in this release, `sim_tte_ode()`): each was confirmed to
+  silently defeat the package's output-grid or trajectory contract if
+  supplied by a caller. Doing so now raises a clear error naming the
+  argument.
+* **M-spline hazard-carry convention fixed and documented.**
   `.sim_surv_df()` now calls `mrgsim(..., nocb = FALSE)`
   (last-observation-carried-forward): the hazard value at `time[i]`
-  applies over `[time[i], time[i+1])`. Previously mrgsolve's default
+  applies over `[time[i], time[i+1])`. Previously `mrgsolve`'s default
   (`nocb = TRUE`, next-observation-carried-backward) applied a hazard
   value to the *preceding* interval, producing an incorrect survival
   trajectory. See the "M-spline hazard carry convention" section of
@@ -46,72 +132,46 @@ Phase A work (see `PRE_PHASE_B_REPORT.md` for full detail):
   values within `1e-8` of `[0, 1]` are clamped to exactly `0`/`1` before
   monotonicity checking and event-time selection (values further outside
   `[0, 1]` remain a hard error). This makes every accepted, normalized
-  trajectory safe for a future `-log(S)` transform and is provably
-  incapable of changing event/censoring classification, given
-  `stats::runif()`'s `[0, 1)` support.
+  trajectory safe for a `-log(S)` transform and is provably incapable
+  of changing event/censoring classification, given `stats::runif()`'s
+  `[0, 1)` support.
 * **M-spline input validation hardened.** `basis`/`coefs`/`basehaz` are
   now validated (numeric, finite, matching dimensions, non-negative
-  resulting hazard) before reaching mrgsolve. Duplicate `time` values
+  resulting hazard) before reaching `mrgsolve`. Duplicate `time` values
   are accepted only when they carry identical hazard values; conflicting
   duplicates are a hard error.
-* **Weibull numerical robustness.** The closed-form Weibull calculation
-  in `inst/models/weibull.cpp` now special-cases `t = 0` (`S(0) = 1`
-  always) and computes in log-cumulative-hazard space for `t > 0`,
-  eliminating a `NaN` that previously occurred for large but finite
-  `mu + lp` (e.g. `mu = 710`) at `t = 0`. `sim_tte()` also now validates
-  `pi`/`mu`/`coefs` are finite and non-empty before calling mrgsolve.
 * **`end_time` boundary semantics resolved.** `end_time = 0` is now
   accepted for both model types (a degenerate zero-duration follow-up;
   every subject is censored at 0). For M-spline models, `end_time` must
   now satisfy `min(time) <= end_time <= max(time)`
   (`end_time < min(time)` was previously accepted and produced a
   censoring time before the supplied hazard trajectory begins).
-* **Reproducibility semantics documented.** `sim_tte_df()` now documents
-  explicitly that a fixed seed reproduces results for a fixed row order
-  of the input data, not invariant to reordering subject blocks
-  (standard sequential-RNG behavior, unchanged).
 * **Package hygiene.** Fixed a `.Rbuildignore` regex bug
   (`^\.manuscript$`, which matched nothing) so the `manuscript/`
   development directory is now correctly excluded from the built source
   tarball.
-* Added 139 new tests (258 total) covering all of the above.
+* **Reproducibility semantics documented.** `sim_tte_df()` now documents
+  explicitly that a fixed seed reproduces results for a fixed row order
+  of the input data, not invariant to reordering subject blocks
+  (standard sequential-RNG behavior, unchanged); `sim_tte_ode()`'s own
+  reproducibility contract (one `U` draw per `idata` row, insensitivity
+  of `mrgsolve::mvgauss()`'s BSV draw to intervening ordinary RNG draws)
+  is documented the same way.
 
-Phase A correctness and robustness pass (see the implementation report
-for full detail):
+## Internal
 
-* **Weibull model correctness.** Removed the near-zero workaround in
-  `inst/models/weibull.cpp` that approximated the hazard as
-  shape-independent (constant-hazard) for solver time below 0.1,
-  which was substantially wrong for `shape != 1`. The built-in
-  Weibull survival probability is now computed as the closed-form
-  expression `S(t) = exp(-exp(mu + lp) * t^shape)` directly (rather
-  than by integrating a singular ODE for `shape < 1`), and matches
-  the analytical formula to floating-point precision at every
-  reported time, for every `shape > 0`.
-* **`time` argument now controls the output grid.** `sim_tte()`'s
-  `time` argument previously only set `end_time` when not supplied
-  explicitly; the actual output/event-time grid silently came from
-  mrgsolve's own default schedule (`delta = 1`), regardless of the
-  spacing requested in `time`. `time` now genuinely determines the
-  simulation output grid via mrgsolve's `tgrid` mechanism, for both
-  Weibull and M-spline models.
-* **`end_time` bug fix.** `sim_tte()`'s `end_time` argument was
-  accepted but never forwarded to the internal simulation call, so it
-  had no effect whenever it differed from `max(time)`. It is now
-  applied correctly and documented.
-* **Input and trajectory validation.** `sim_tte()` and `sim_tte_df()`
-  now validate `time`/survival trajectories for missing values,
-  non-finite values, out-of-range survival probabilities, negative
-  times, unsorted or duplicated times within a subject, and
-  non-monotone (increasing) survival, with informative errors rather
-  than silent repair. See `?sim_tte_df` for the full contract.
-* **Documented censoring contract.** `sim_tte_df()` now documents
-  precisely that a subject whose trajectory never crosses the sampled
-  threshold is censored at that subject's own last reported time
-  (not necessarily a shared administrative cutoff), and that a
-  trajectory is not required to start at survival = 1 or time = 0.
-* Added extensive regression tests for the above, including tests
-  that would have failed under the previous Weibull implementation.
+* Test runbook (`reports/07_test_runbook.md`), targeted test groups and
+  a fast/slow split (`dev/run-tests.R`), and a `Makefile` for common
+  development tasks -- none shipped in the built package
+  (`.Rbuildignore`d).
+* Extensive validation scripts under `inst/validation/` (also
+  `.Rbuildignore`d, not part of the built package): closed-form
+  correctness, grid convergence, PK/PD mechanism checks, in-solver
+  boundary-guard/refinement accuracy, M-spline convention equivalence,
+  and a CRAN-1.0.2 backward-compatibility audit.
+* Added several hundred new tests across the legacy and new APIs (see
+  `reports/07_test_runbook.md` for current counts and the fast/slow
+  split).
 
 # simtte 1.0.2
 

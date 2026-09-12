@@ -6,12 +6,14 @@
 inst/doc
 /doc/
 /reports/
+/dev/
 /Meta/
 /manuscript/
 *.pdf
 *.Rcheck/
 .Rcheck/
-*md
+*.md
+!STATUS.md
 .DS_Store
 ^dev$
 Makefile
