@@ -199,6 +199,9 @@
 #' \emph{Statistics in Medicine}, 21(15), 2175--2197.
 #' \doi{10.1002/sim.1203}
 #'
+#' @seealso \code{\link{sim_tte_ode}}, for the in-solver event-detection
+#'   mechanism (joint PK/PD and time-to-event simulation) this function
+#'   does not implement.
 #' @export
 #' @examples
 #' # Fast Weibull example with a small dataset
@@ -454,6 +457,9 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #' bug; \code{sim_tte_df()} does not currently use per-subject or
 #' per-ID RNG streams.
 #'
+#' @seealso \code{\link{sim_tte_ode}}, for the in-solver event-detection
+#'   mechanism (joint PK/PD and time-to-event simulation) this function
+#'   does not implement.
 #' @export
 #' @examples
 #' # Create a mock survival probability data frame (no mrgsolve required)

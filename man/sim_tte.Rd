@@ -262,3 +262,8 @@ to prognostic modelling and estimation of treatment effects.
 \emph{Statistics in Medicine}, 21(15), 2175--2197.
 \doi{10.1002/sim.1203}
 }
+\seealso{
+\code{\link{sim_tte_ode}}, for the in-solver event-detection
+  mechanism (joint PK/PD and time-to-event simulation) this function
+  does not implement.
+}
