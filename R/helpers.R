@@ -1270,7 +1270,10 @@
 #'   function keeps working against the synthetic/hand-built trajectories
 #'   used in the test suite's own defensive-fallback tests.
 #' @return Data frame with columns \code{ID}, \code{sim_time},
-#'   \code{sim_status}.
+#'   \code{sim_status}, \code{sim_reason} (\code{"event"} or
+#'   \code{"administrative"} -- \code{sim_tte_ode()}'s own \code{censoring
+#'   =} argument, when supplied, further updates this column via
+#'   \code{\link{add_censoring}}; see \code{reports/16_censoring_design.md}).
 #' @noRd
 .resolve_ode_events <- function(traj) {
     has_bracket <- all(c("T_PRE", "P_PRE", "P_POST") %in% names(traj))
@@ -1287,7 +1290,8 @@
         # R side regardless of the in-model SOLVERTIME <= END guard.
         if (!isTRUE(as.logical(last$event_found)) || last$TEVT >= end_i) {
             return(data.frame(ID = id, sim_time = end_i, sim_status = 0L,
-                used_fallback = FALSE, fallback_signature = NA_character_))
+                sim_reason = "administrative", used_fallback = FALSE,
+                fallback_signature = NA_character_))
         }
 
         sim_time <- if (has_bracket) {
@@ -1331,7 +1335,7 @@
             }
         }
         data.frame(ID = id, sim_time = sim_time, sim_status = 1L,
-            used_fallback = used_fallback,
+            sim_reason = "event", used_fallback = used_fallback,
             fallback_signature = fallback_signature)
     })
     out <- dplyr::bind_rows(rows)

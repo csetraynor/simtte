@@ -43,6 +43,25 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   edited in place). Verified to reproduce all six built-in hazard
   models exactly when converting their own `mrgsolve::modlib()`
   backbones.
+* **`add_censoring()`: independent right censoring**, on top of any
+  already-simulated events data frame (`sim_tte_ode()`, `sim_tte()`, or
+  `sim_tte_df()` output alike). Draws a per-subject censoring time from
+  an exponential, Weibull, uniform, or user-supplied distribution and
+  takes `min(event time, censoring time, administrative end)`;
+  `sim_status`/`sim_time` are updated in place and a new `sim_reason`
+  column (`"event"`/`"censored"`/`"administrative"`) records why.
+  `censoring_rate_for()` solves for the distribution parameter (rate,
+  or Weibull scale at a fixed shape) giving a target censoring
+  fraction, from the event times of an already-run uncensored
+  simulation. `sim_tte_ode()` also accepts a `censoring = ` argument
+  that applies this automatically, inside its own seeded draw, so one
+  `seed` reproduces `U`, any between-subject draw, and censoring
+  together. `$events` now always carries `sim_reason`, even with no
+  `censoring` argument supplied (`"event"`/`"administrative"`) --
+  `sim_status`/`sim_time` are unaffected either way. Dependent/informative
+  censoring (a censoring hazard driven by a subject's own simulated
+  PK/PD state) is out of scope for this release; see
+  `reports/16_censoring_design.md` for why and what it would take.
 
 ## Improvements
 

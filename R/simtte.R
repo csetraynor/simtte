@@ -201,7 +201,9 @@
 #'
 #' @seealso \code{\link{sim_tte_ode}}, for the in-solver event-detection
 #'   mechanism (joint PK/PD and time-to-event simulation) this function
-#'   does not implement.
+#'   does not implement. \code{\link{add_censoring}}, to apply
+#'   independent right censoring to this function's output (no argument
+#'   here for that -- call it directly on the returned data frame).
 #' @export
 #' @examples
 #' # Fast Weibull example with a small dataset
@@ -459,7 +461,8 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #'
 #' @seealso \code{\link{sim_tte_ode}}, for the in-solver event-detection
 #'   mechanism (joint PK/PD and time-to-event simulation) this function
-#'   does not implement.
+#'   does not implement. \code{\link{add_censoring}}, to apply
+#'   independent right censoring to this function's output.
 #' @export
 #' @examples
 #' # Create a mock survival probability data frame (no mrgsolve required)
