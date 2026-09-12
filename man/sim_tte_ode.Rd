@@ -20,6 +20,7 @@ sim_tte_ode(
   knots = NULL,
   boundary_knots = NULL,
   coefs = NULL,
+  censoring = NULL,
   seed = NULL,
   keep_trajectory = FALSE,
   ...
@@ -107,6 +108,12 @@ default \code{c(0, end)}. \code{coefs}: numeric vector of
 non-negative M-spline coefficients, length
 \code{length(knots) + 3} (2 = spline degree, fixed).}
 
+\item{censoring}{\code{NULL} (default) or a censoring spec list (see
+\code{\link{add_censoring}}). When supplied, an independent
+censoring time is drawn per subject and applied to \code{$events}
+via \code{\link{add_censoring}}, inside this call's own seeded
+block -- see "Right censoring" below.}
+
 \item{seed}{Optional integer. If supplied, \code{set.seed(seed)} is
 called before \code{U} is drawn.}
 
@@ -131,7 +138,9 @@ accuracy (\code{rtol}, \code{atol}, \code{hmax}, ...) are set; see
 An object of class \code{"simtte_ode_sim"}, a list with:
 \describe{
   \item{events}{Data frame with columns \code{ID}, \code{sim_time},
-    \code{sim_status} (1 = event, 0 = censored).}
+    \code{sim_status} (1 = event, 0 = censored), \code{sim_reason}
+    (\code{"event"}, \code{"censored"}, or \code{"administrative"} --
+    see "Right censoring" below).}
   \item{trajectory}{The full \code{mrgsim()} output data frame, or
     \code{NULL} unless \code{keep_trajectory = TRUE}.}
   \item{model}{The compiled \code{mrgmod} object used.}
@@ -409,7 +418,32 @@ backbone itself multiplies a hazard-scale quantity by \code{eta}
 wired into the hazard link this way; see
 \code{reports/10_phase4_report.md}). \pkg{TMDD} is the intentionally
 stiff member of this set (fast binding kinetics next to slow target
-turnover) and is this library's designated steepness stress case.
+turnover) and is this library's designated steepness stress case. An
+outright ODE solver failure (not the reported-grid fallback described
+above, an \pkg{mrgsolve}/\code{lsoda} error that stops the call) is
+possible for \code{"tmdd_hazard"} at a sufficiently extreme
+parameter/dose combination -- far past any shipped default -- and is
+not wrapped with a more informative message
+(\code{reports/04_author_decisions.md} "After Phase 5b" decision 2):
+it means the parameters are too extreme for the requested tolerance;
+try tighter \code{rtol}/\code{atol} or a smaller dose.
+}
+
+\section{Right censoring}{
+
+\code{$events} always carries \code{sim_reason}, distinguishing
+\code{"event"} from administrative censoring at \code{end}
+(\code{"administrative"}). Supplying \code{censoring} adds a second,
+independent censoring process on top -- a per-subject censoring time
+drawn from the requested distribution, with the observed outcome
+becoming \code{min(event time, censoring time, end)} and
+\code{sim_reason = "censored"} for a subject pulled earlier by the
+draw. See \code{\link{add_censoring}} for the full spec (the same
+function this argument calls internally) and
+\code{reports/16_censoring_design.md} for why this is applied in R
+after simulation rather than as a second ODE compartment (out of
+scope for this release: censoring that depends on a subject's own
+simulated PK/PD trajectory, e.g. dropout driven by toxicity).
 }
 
 \section{Between-subject variability}{
@@ -487,4 +521,7 @@ head(sim$events)
 \code{\link{sim_tte}}, \code{\link{sim_tte_df}}, for the
   grid-based mechanism this function does not replace.
   \code{\link{tte_model}}, to bring in a user-supplied PK/PD model.
+  \code{\link{add_censoring}}, the function \code{censoring} calls
+  internally (usable standalone, and on \code{sim_tte()}/
+  \code{sim_tte_df()} output too).
 }

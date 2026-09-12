@@ -31,6 +31,17 @@
 #' (\code{event_time_method = "log_survival"}). See
 #' \code{vignette("introduction", package = "simtte")}.
 #'
+#' @section Right censoring:
+#' \code{\link{add_censoring}} adds a second, independent censoring
+#' process to the output of any of the three simulation functions above:
+#' a per-subject censoring time drawn from an exponential, Weibull,
+#' uniform, or user-supplied distribution, with the observed time
+#' becoming \code{min(event time, censoring time, administrative end)}.
+#' \code{\link{censoring_rate_for}} solves for the distribution
+#' parameter giving a target censoring fraction. \code{\link{sim_tte_ode}}
+#' also accepts a \code{censoring} argument that applies this
+#' automatically, inside its own seeded draw.
+#'
 #' @references
 #' Bender R, Augustin T, Blettner M (2005). Generating survival times to
 #' simulate Cox proportional hazards models. \emph{Statistics in

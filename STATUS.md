@@ -26,12 +26,21 @@ design and analysis, two ways:
    source. Unchanged in this rework except for a small number of
    real, documented bug fixes (see `NEWS.md`).
 
+Either way, `add_censoring()` can layer independent right censoring
+(exponential, Weibull, uniform, or a user-supplied distribution) on
+top of the simulated event times; `censoring_rate_for()` picks a
+distribution parameter for a target censoring fraction. Dependent
+censoring (a censoring hazard driven by a subject's own simulated
+PK/PD state) is out of scope for now -- see `reports/16_censoring_design.md`.
+
 ## Public API
 
 | Function | What it's for |
 |---|---|
 | `sim_tte_ode()` | In-solver PK/PD + time-to-event simulation |
 | `tte_model()` | Convert your own `mrgsolve` model for `sim_tte_ode()` |
+| `add_censoring()` | Apply independent right censoring to any simulated events data frame |
+| `censoring_rate_for()` | Solve for a censoring-distribution parameter hitting a target censoring fraction |
 | `sim_tte()` | Closed-form Weibull/M-spline simulation (original API) |
 | `sim_tte_df()` | Inverse-transform sampling on any custom trajectory |
 | `explore_pi_tq_surv()` | Survival-difference-at-a-quantile utility |
@@ -44,14 +53,15 @@ start here), `vignette("introduction")`, `vignette("advanced-usage")`
 ## How to run the tests
 
 ```
-Rscript dev/run-tests.R              # fast: ~34s
+Rscript dev/run-tests.R              # fast: ~35s
 Rscript dev/run-tests.R all --slow   # full: ~2m20s
-Rscript dev/run-tests.R --check      # R CMD check --as-cran, slow tests on: ~3min
+Rscript dev/run-tests.R --check --fast  # R CMD check --as-cran, slow tests off: ~1m25s
+Rscript dev/run-tests.R --check      # R CMD check --as-cran, slow tests on (pre-release): ~3min
 ```
 
 See `reports/07_test_runbook.md` for targeted groups (one file/model at
 a time), what each test file covers, and a "how do I check X" table.
-Current counts: 728 pass / 0 fail / 40 skip (fast), 858 pass / 0 fail /
+Current counts: 786 pass / 0 fail / 43 skip (fast), 920 pass / 0 fail /
 0 skip (slow). `R CMD check`: `Status: OK` (0 errors, 0 warnings, 0
 notes).
 
@@ -93,14 +103,21 @@ narrative for each: what was tested, why, and what the numbers mean.
 - **Between-subject variability (`omega`) on `tmdd_hazard`** is
   verified thoroughly on one parameter (`V2`); its other ten
   registered targets are not individually stress-tested the same way.
+- **Right censoring is independent only.** `add_censoring()` draws a
+  censoring time with no dependence on a subject's own simulated
+  PK/PD trajectory; informative/dependent censoring (e.g. dropout
+  driven by toxicity) needs a model-based mechanism not built yet --
+  see `reports/16_censoring_design.md` options B/C for the design and
+  cost estimate.
+- **`censoring_rate_for()`'s solved rate/scale is approximate**: it
+  depends on the particular uncensored run supplied to it, not a
+  closed-form property of the model. Re-check the realized fraction on
+  a larger cohort after drawing with the solved parameter.
 
 ## Not started / open before a CRAN release
 
 - No decision yet on whether `simtte-manuscript-submission/` (an
   unrelated R Journal manuscript directory that happens to live inside
   this repository) should be tracked in git.
-- `R CMD check`'s own duration has grown to just over 3 minutes as the
-  test suite has grown; no faster "local iteration" check mode exists
-  yet, only the full one.
-- See `reports/15_phase5b_report.md` "Questions for the author" for
-  the specific open decisions and the release readiness assessment.
+- See `reports/17_phase6_report.md` "Questions for the author" for the
+  specific open decisions and the release readiness assessment.
