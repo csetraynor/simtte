@@ -17,4 +17,4 @@ inst/doc
 .DS_Store
 ^dev$
 Makefile
-^simtte-manuscript-submission$
+/simtte-manuscript-submission/

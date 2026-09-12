@@ -46,13 +46,14 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
 * **`add_censoring()`: independent right censoring**, on top of any
   already-simulated events data frame (`sim_tte_ode()`, `sim_tte()`, or
   `sim_tte_df()` output alike). Draws a per-subject censoring time from
-  an exponential, Weibull, uniform, or user-supplied distribution and
-  takes `min(event time, censoring time, administrative end)`;
-  `sim_status`/`sim_time` are updated in place and a new `sim_reason`
-  column (`"event"`/`"censored"`/`"administrative"`) records why.
-  `censoring_rate_for()` solves for the distribution parameter (rate,
-  or Weibull scale at a fixed shape) giving a target censoring
-  fraction, from the event times of an already-run uncensored
+  an exponential, Weibull, uniform, lognormal, gamma, or user-supplied
+  distribution and takes `min(event time, censoring time, administrative
+  end)`; `sim_status`/`sim_time` are updated in place and a new
+  `sim_reason` column (`"event"`/`"censored"`/`"administrative"`)
+  records why. `censoring_rate_for()` solves for the distribution
+  parameter (rate, Weibull scale at a fixed shape, lognormal meanlog at
+  a fixed sdlog, or gamma rate at a fixed shape) giving a target
+  censoring fraction, from the event times of an already-run uncensored
   simulation. `sim_tte_ode()` also accepts a `censoring = ` argument
   that applies this automatically, inside its own seeded draw, so one
   `seed` reproduces `U`, any between-subject draw, and censoring
@@ -62,6 +63,24 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   censoring (a censoring hazard driven by a subject's own simulated
   PK/PD state) is out of scope for this release; see
   `reports/16_censoring_design.md` for why and what it would take.
+* **`add_interval_censoring()`: interval censoring** from a visit/
+  assessment-time schedule, on top of any already-simulated (and, if
+  used, already right-censored) events data frame. An event is only
+  known to have happened between the last event-free visit and the
+  first visit at which it was detected, giving `(L, R]`; a censored
+  subject is only known event-free through their last visit, giving
+  `(L, Inf)`. Adds `sim_time_left`/`sim_time_right` columns --
+  `sim_time`/`sim_status`/`sim_reason` are unchanged, so every existing
+  consumer keeps working. `visit_schedule()` generates a per-subject
+  schedule with fixed spacing and optional random jitter.
+  `sim_tte_ode()` also accepts a `visits = ` argument (a schedule, or a
+  jitter spec) that applies this automatically, always *after* any
+  `censoring = `, inside its own seeded draw. Designed to feed
+  `survival::Surv(time = sim_time_left, time2 = sim_time_right, type =
+  "interval2")` directly (convert the `Inf` upper bound to `NA` first --
+  see `?add_interval_censoring`). A visit-process model (missed visits,
+  a visit hazard depending on a subject's own simulated state) is out
+  of scope; see `reports/18_interval_censoring_design.md`.
 
 ## Improvements
 

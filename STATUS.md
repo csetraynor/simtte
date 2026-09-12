@@ -27,11 +27,17 @@ design and analysis, two ways:
    real, documented bug fixes (see `NEWS.md`).
 
 Either way, `add_censoring()` can layer independent right censoring
-(exponential, Weibull, uniform, or a user-supplied distribution) on
-top of the simulated event times; `censoring_rate_for()` picks a
-distribution parameter for a target censoring fraction. Dependent
-censoring (a censoring hazard driven by a subject's own simulated
-PK/PD state) is out of scope for now -- see `reports/16_censoring_design.md`.
+(exponential, Weibull, uniform, lognormal, gamma, or a user-supplied
+distribution) on top of the simulated event times; `censoring_rate_for()`
+picks a distribution parameter for a target censoring fraction. On top
+of that, `add_interval_censoring()` can map the (possibly
+right-censored) outcome onto a visit/assessment-time interval `(L, R]`
+-- `sim_time_left`/`sim_time_right` columns, ready for
+`survival::Surv(..., type = "interval2")`; `visit_schedule()` generates
+a schedule with fixed spacing and jitter. Dependent/informative
+censoring or a visit process (either depending on a subject's own
+simulated PK/PD state) is out of scope for now -- see
+`reports/16_censoring_design.md`/`reports/18_interval_censoring_design.md`.
 
 ## Public API
 
@@ -41,6 +47,8 @@ PK/PD state) is out of scope for now -- see `reports/16_censoring_design.md`.
 | `tte_model()` | Convert your own `mrgsolve` model for `sim_tte_ode()` |
 | `add_censoring()` | Apply independent right censoring to any simulated events data frame |
 | `censoring_rate_for()` | Solve for a censoring-distribution parameter hitting a target censoring fraction |
+| `add_interval_censoring()` | Map a (possibly right-censored) outcome onto a visit-schedule interval |
+| `visit_schedule()` | Generate a per-subject visit schedule (fixed spacing + jitter) |
 | `sim_tte()` | Closed-form Weibull/M-spline simulation (original API) |
 | `sim_tte_df()` | Inverse-transform sampling on any custom trajectory |
 | `explore_pi_tq_surv()` | Survival-difference-at-a-quantile utility |
@@ -113,11 +121,13 @@ narrative for each: what was tested, why, and what the numbers mean.
   depends on the particular uncensored run supplied to it, not a
   closed-form property of the model. Re-check the realized fraction on
   a larger cohort after drawing with the solved parameter.
+- **Interval censoring assumes a fixed visit schedule, known in
+  advance.** No missed visits, and no visit hazard depending on a
+  subject's own simulated state (a sicker subject visiting less often)
+  -- see `reports/18_interval_censoring_design.md` option C for the
+  design and cost estimate.
 
 ## Not started / open before a CRAN release
 
-- No decision yet on whether `simtte-manuscript-submission/` (an
-  unrelated R Journal manuscript directory that happens to live inside
-  this repository) should be tracked in git.
-- See `reports/17_phase6_report.md` "Questions for the author" for the
+- See `reports/19_phase6b_report.md` "Questions for the author" for the
   specific open decisions and the release readiness assessment.

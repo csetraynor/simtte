@@ -7,8 +7,9 @@
 censoring_rate_for(
   times,
   target,
-  dist = c("exponential", "weibull"),
-  shape = NULL
+  dist = c("exponential", "weibull", "lognormal", "gamma"),
+  shape = NULL,
+  sdlog = NULL
 )
 }
 \arguments{
@@ -19,28 +20,38 @@ finite.}
 \item{target}{Numeric scalar in \eqn{(0, 1)}. The desired
 \eqn{P(C < T)}.}
 
-\item{dist}{\code{"exponential"} (default) or \code{"weibull"}.}
+\item{dist}{\code{"exponential"} (default), \code{"weibull"},
+\code{"lognormal"}, or \code{"gamma"}.}
 
-\item{shape}{Required (positive numeric scalar), and used only, for
-\code{dist = "weibull"}: the Weibull shape is fixed by the caller
-and this function solves for \code{scale} alone.}
+\item{shape}{Required (positive numeric scalar) for \code{dist =
+"weibull"} (solves for \code{scale}) or \code{dist = "gamma"}
+(solves for \code{rate}); the shape is fixed by the caller in
+either case. Unused otherwise.}
+
+\item{sdlog}{Required (positive numeric scalar) for \code{dist =
+"lognormal"} (solves for \code{meanlog}, with \code{sdlog} fixed
+by the caller). Unused otherwise.}
 }
 \value{
-Numeric scalar: \code{rate} for \code{dist = "exponential"},
-  \code{scale} for \code{dist = "weibull"}.
+Numeric scalar: \code{rate} for \code{dist = "exponential"}
+  or \code{"gamma"}, \code{scale} for \code{dist = "weibull"},
+  \code{meanlog} for \code{dist = "lognormal"}.
 }
 \description{
 Users think in terms of "about 20% independently censored before
 \code{end}", not in the rate/scale units \code{\link{add_censoring}}
 needs, and the right units depend on the model's own time scale. This
-solves for the exponential \code{rate} (or, for a fixed Weibull
-\code{shape}, the Weibull \code{scale}) that would give a target
-independent-censoring fraction, treating \code{times} -- the event
-times from an already-run, \strong{uncensored} simulation -- as an
-empirical sample of the latent event time \eqn{T}: it solves
-\code{mean(1 - exp(-rate * times)) == target} (exponential) or
-\code{mean(1 - exp(-(times / scale)^shape)) == target} (Weibull) via
-\code{\link[stats]{uniroot}}. This is the Monte Carlo estimate of
+solves for one parameter of a fixed-family censoring distribution --
+the exponential/gamma \code{rate}, the Weibull \code{scale} at a
+fixed \code{shape}, or the lognormal \code{meanlog} at a fixed
+\code{sdlog} -- that would give a target independent-censoring
+fraction, treating \code{times} -- the event times from an
+already-run, \strong{uncensored} simulation -- as an empirical sample
+of the latent event time \eqn{T}: it solves \code{mean(F_C(times)) ==
+target} via \code{\link[stats]{uniroot}}, where \code{F_C} is the
+censoring distribution's own CDF (\code{\link[stats]{pexp}}/
+\code{\link[stats]{pweibull}}/\code{\link[stats]{plnorm}}/
+\code{\link[stats]{pgamma}}). This is the Monte Carlo estimate of
 \eqn{P(C < T)} under independence, using the supplied sample in place
 of \eqn{T}'s true (generally not closed-form once between-subject
 variability or covariates are in the model) distribution --

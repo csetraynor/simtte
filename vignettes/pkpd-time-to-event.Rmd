@@ -281,37 +281,113 @@ sim_censored <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
 table(sim_censored$events$sim_reason)
 ```
 
-Choosing a `rate` in the model's own time units from a target
-censoring fraction ("about 20% independently censored") is what
-`censoring_rate_for()` is for -- it solves for the rate using the event
-times from an uncensored run as a stand-in for the true event-time
-distribution, then a quick redraw on a larger cohort confirms it landed
-close to the target:
+`"exponential"`, `"weibull"` (fixed `shape`, solves for `scale`),
+`"uniform"` (a fixed interval -- the common case for uniform-accrual
+administrative censoring), `"lognormal"` (fixed `sdlog`), `"gamma"`
+(fixed `shape`, `rate` only), and `"user"` (any function `n ->
+numeric(n)`) are the six `dist` options; see `?add_censoring`.
+Censoring that depends on a subject's own simulated PK/PD trajectory
+(informative dropout, e.g. driven by toxicity) is out of scope -- see
+`reports/16_censoring_design.md` for why, and what a future version
+supporting it would need to change.
+
+### Choosing the censoring rate for a target censoring fraction
+
+**`censoring_rate_for()` solves for a `dist` parameter (rate, scale,
+meanlog, or gamma rate) that would give a target independent-censoring
+fraction, estimated from the event times of an already-run,
+uncensored simulation.** It is an approximation, not an exact
+calculation -- the estimate depends on the particular uncensored run
+it is given, so always redraw on a larger cohort afterward and check
+the realized fraction landed close to the target, the way this example
+does:
 
 ```{r censoring-rate-for}
+# 1. Solve: what rate gives ~20% independently censored, given this
+#    model's own event-time scale?
 event_times <- sim_uncensored$events$sim_time[
   sim_uncensored$events$sim_status == 1]
 rate_20pct <- censoring_rate_for(event_times, target = 0.2)
 rate_20pct
 
+# 2. Redraw: apply that rate to a larger cohort.
 check <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
   n = 2000, end = 30, delta = 2,
   censoring = list(dist = "exponential", rate = rate_20pct), seed = 1)
+
+# 3. Check: did it land close to 20%?
 mean(check$events$sim_reason == "censored")
 ```
 
-This is an approximation (it depends on the particular uncensored run
-it is given), which is why the check above matters more than the
-solved rate itself. `"weibull"` (fixed `shape`, solves for `scale`),
-`"uniform"` (a fixed interval -- the common case for uniform-accrual
-administrative censoring), and `"user"` (any function `n -> numeric(n)`)
-are the other three `dist` options; see `?add_censoring`. Censoring
-that depends on a subject's own simulated PK/PD trajectory (informative
-dropout, e.g. driven by toxicity) is out of scope -- see
-`reports/16_censoring_design.md` for why, and what a future version
-supporting it would need to change.
+If the realized fraction in step 3 is not close enough, re-solve with a
+larger or different uncensored sample rather than trusting the first
+answer -- the check is the point, not an optional extra.
 
-## 7. Backward compatibility
+## 7. Interval censoring
+
+Right censoring still gives an *exact* event time when an event
+happens. In a real trial, many endpoints (progression, response) are
+only checked at scheduled visits -- an event is known to have happened
+somewhere between the last visit where the subject was event-free and
+the first visit where it was detected. `add_interval_censoring()` maps
+an already-simulated (and, if used, already right-censored) outcome
+onto that interval:
+
+```{r interval-basic}
+visits <- c(0, 5, 10, 15, 20, 25, 30)
+interval <- add_interval_censoring(sim_censored$events, visits = visits)
+head(interval[, c("ID", "sim_time", "sim_status", "sim_reason",
+  "sim_time_left", "sim_time_right")])
+```
+
+`sim_time`/`sim_status`/`sim_reason` are untouched -- `sim_time_left`/
+`sim_time_right` are added on top, so anything already reading the
+first three keeps working. `sim_time_right` is `Inf` whenever there is
+no known upper bound: a censored subject (never detected as an event
+under this schedule), or -- more subtly -- an event that genuinely
+happened but only *after* the subject's last scheduled visit, so the
+schedule itself never confirmed it. `sim_status` still reads `1` for
+that second case; the exact columns are the simulation's ground truth,
+independent of what the visit schedule happened to observe.
+
+**Order matters**: apply `add_interval_censoring()` *after*
+`add_censoring()`, never before -- a dropout changes `sim_time`/
+`sim_status`, and the interval mapping needs to see the final value to
+know there was no assessment after the dropout time. `sim_tte_ode()`'s
+own `censoring =`/`visits =` arguments apply them in this order
+automatically.
+
+A visit schedule can also be per-subject (a `data.frame(ID, time)`), or
+generated with fixed spacing plus random jitter -- realistic, since
+scheduled visits rarely land exactly on the nominal day:
+
+```{r interval-jitter}
+sched <- visit_schedule(n = 200, every = 4, end = 24, jitter = 1, seed = 1)
+head(sched)
+
+sim_jittered <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+  n = 200, end = 24, delta = 2, visits = list(every = 4, jitter = 1),
+  seed = 1)
+head(sim_jittered$events[, c("sim_time", "sim_status", "sim_time_left",
+  "sim_time_right")])
+```
+
+For a nonparametric interval-censored survival fit, convert
+`sim_time_right`'s `Inf` to `NA` (the `survival` package's own
+convention for an open upper bound) and hand both bounds to
+`survival::Surv(..., type = "interval2")`:
+
+```{r interval-survfit}
+right_for_surv <- ifelse(is.infinite(interval$sim_time_right), NA,
+  interval$sim_time_right)
+fit <- survival::survfit(survival::Surv(time = sim_time_left,
+  time2 = right_for_surv, type = "interval2") ~ 1,
+  data = data.frame(sim_time_left = interval$sim_time_left,
+    right_for_surv = right_for_surv))
+summary(fit, times = visits)
+```
+
+## 8. Backward compatibility
 
 `sim_tte()` and `sim_tte_df()` -- the original, closed-form/grid-based
 API -- are unchanged:

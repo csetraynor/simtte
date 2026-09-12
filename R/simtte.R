@@ -204,6 +204,9 @@
 #'   does not implement. \code{\link{add_censoring}}, to apply
 #'   independent right censoring to this function's output (no argument
 #'   here for that -- call it directly on the returned data frame).
+#'   \code{\link{add_interval_censoring}}, to map its output onto an
+#'   assessment-time interval (call \code{add_censoring()} first, if
+#'   using both).
 #' @export
 #' @examples
 #' # Fast Weibull example with a small dataset
@@ -463,6 +466,9 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #'   mechanism (joint PK/PD and time-to-event simulation) this function
 #'   does not implement. \code{\link{add_censoring}}, to apply
 #'   independent right censoring to this function's output.
+#'   \code{\link{add_interval_censoring}}, to map its output onto an
+#'   assessment-time interval (call \code{add_censoring()} first, if
+#'   using both).
 #' @export
 #' @examples
 #' # Create a mock survival probability data frame (no mrgsolve required)
