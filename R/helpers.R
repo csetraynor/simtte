@@ -642,15 +642,162 @@
 #' than a handful of names exist.
 #' @noRd
 .ODE_LIBRARY_FILES <- c(exponential = "exponential_ode",
-    weibull = "weibull_ode", gompertz = "gompertz_ode")
+    weibull = "weibull_ode", gompertz = "gompertz_ode",
+    pk_hazard = "pk_hazard", irm1_hazard = "irm1_hazard",
+    irm2_hazard = "irm2_hazard", irm3_hazard = "irm3_hazard",
+    irm4_hazard = "irm4_hazard", tmdd_hazard = "tmdd_hazard")
+
+#' Load (and cache) a bundled sim_tte_ode() library model file by basename
+#'
+#' The shared primitive behind \code{\link{.read_ode_library_model}}
+#' (the \code{.ODE_LIBRARY_FILES}-keyed models) and the M-spline
+#' knot-count dispatch (\code{\link{.mspline_file_for}}), which resolves
+#' its file basename differently (from \code{length(knots)}, not a 1:1
+#' public-name map) but loads it the same way.
+#'
+#' @param file Character. File basename (no extension) under
+#'   \code{inst/models/library/}.
+#' @return Compiled mrgsolve model object.
+#' @noRd
+.read_ode_library_model_file <- function(file) {
+    mrgsolve::mread_cache(model = file, project = .cfile_dir("library"))
+}
 
 #' Load (and cache) a bundled sim_tte_ode() library model
 #' @param model Character. One of \code{names(.ODE_LIBRARY_FILES)}.
 #' @return Compiled mrgsolve model object.
 #' @noRd
 .read_ode_library_model <- function(model) {
-    file <- unname(.ODE_LIBRARY_FILES[model])
-    mrgsolve::mread_cache(model = file, project = .cfile_dir("library"))
+    .read_ode_library_model_file(unname(.ODE_LIBRARY_FILES[model]))
+}
+
+# ---------------------------------------------------------------------
+# sim_tte_ode() Phase 3 M-spline helpers (reports/09_phase3_report.md;
+# convention decided there section 1, matching
+# splines2::mSpline(..., degree = 2, intercept = TRUE) exactly).
+# "mspline" is a single public model name dispatching to one of a fixed
+# set of shipped interior-knot-count variants
+# (reports/02_technical_design.md section 4 option 1), selected from
+# length(knots) -- unlike the 1:1 .ODE_LIBRARY_FILES map the other
+# three models use.
+# ---------------------------------------------------------------------
+
+#' Fixed degree of every shipped mspline_ode_k*.cpp variant (quadratic
+#' M-splines, matching the convention this session pinned down -- see
+#' reports/09_phase3_report.md section 1). Not user-configurable: a
+#' different degree would need a different set of shipped model files.
+#' @noRd
+.MSPLINE_DEGREE <- 2L
+
+#' Interior-knot counts shipped as library model variants.
+#' @noRd
+.MSPLINE_INTERIOR_COUNTS <- c(3L, 5L, 7L)
+
+#' Resolve a length(knots) to its shipped mspline_ode_k*.cpp file
+#' @param n_interior Integer. \code{length(knots)}.
+#' @return Character file basename.
+#' @noRd
+.mspline_file_for <- function(n_interior) {
+    if (!n_interior %in% .MSPLINE_INTERIOR_COUNTS) {
+        stop("sim_tte_ode(model = \"mspline\") ships a fixed set of ",
+            "interior-knot-count variants: ",
+            paste(.MSPLINE_INTERIOR_COUNTS, collapse = ", "),
+            "; got length(knots) = ", n_interior, ". Use one of the ",
+            "supported counts, or sim_tte(type = \"ms\") for an ",
+            "arbitrary knot count.", call. = FALSE)
+    }
+    paste0("mspline_ode_k", n_interior)
+}
+
+#' Validate sim_tte_ode(model = "mspline")'s knots/boundary_knots/coefs
+#'
+#' Mirrors the M-spline domain/coefficient constraints a fitted hazard
+#' must satisfy: strictly increasing interior knots inside the open
+#' boundary-knot interval (the same requirement
+#' \code{splines2::mSpline()} itself enforces), and non-negative
+#' coefficients (the hazard \code{eta * sum(c_m * M_m(t))} would
+#' otherwise go negative, since \code{M_m(t) >= 0} always).
+#' \code{end}/\code{idata$END} must not exceed \code{boundary_knots[2]}:
+#' the basis (and therefore the hazard) is identically zero beyond it
+#' (see \code{mspline_ode_k3.cpp}'s "DOMAIN" note), so silently allowing
+#' \code{end} past it would silently stop hazard accrual rather than
+#' erroring the way \code{sim_tte(type = "ms")}'s own
+#' \code{end_time > max(time)} check already does for the same reason.
+#'
+#' @param knots Numeric vector of interior knots.
+#' @param boundary_knots Numeric length-2 vector.
+#' @param coefs Numeric vector, length \code{length(knots) + .MSPLINE_DEGREE + 1}.
+#' @param end Numeric scalar, the requested follow-up horizon.
+#' @return \code{TRUE}, invisibly, if valid.
+#' @noRd
+.validate_mspline_args <- function(knots, boundary_knots, coefs, end) {
+    if (!is.numeric(knots) || !length(knots)) {
+        stop("sim_tte_ode(model = \"mspline\") requires 'knots' (a ",
+            "numeric vector of interior knots).", call. = FALSE)
+    }
+    # Checked first, ahead of the strict-interior-placement check below:
+    # an unsupported knot count is the more useful error to see first,
+    # regardless of where the (wrong-count) knots happen to sit relative
+    # to boundary_knots.
+    .mspline_file_for(length(knots))
+    if (!is.numeric(boundary_knots) || length(boundary_knots) != 2L ||
+        any(!is.finite(boundary_knots)) || boundary_knots[1] >= boundary_knots[2]) {
+        stop("'boundary_knots' must be a finite numeric vector ",
+            "c(lower, upper) with lower < upper.", call. = FALSE)
+    }
+    if (any(!is.finite(knots)) || is.unsorted(knots, strictly = TRUE)) {
+        stop("'knots' must be finite and strictly increasing (not ",
+            "sorted automatically).", call. = FALSE)
+    }
+    if (knots[1] <= boundary_knots[1] || knots[length(knots)] >= boundary_knots[2]) {
+        stop("'knots' must lie strictly inside (boundary_knots[1], ",
+            "boundary_knots[2]) = (", boundary_knots[1], ", ",
+            boundary_knots[2], ").", call. = FALSE)
+    }
+    n_expected_coefs <- length(knots) + .MSPLINE_DEGREE + 1L
+    if (!is.numeric(coefs) || length(coefs) != n_expected_coefs) {
+        stop("'coefs' must be numeric, length(knots) + ", .MSPLINE_DEGREE,
+            " + 1 = ", n_expected_coefs, " (got ", length(coefs), ").",
+            call. = FALSE)
+    }
+    if (any(!is.finite(coefs))) {
+        stop("'coefs' must not contain NA, NaN, Inf, or -Inf values.",
+            call. = FALSE)
+    }
+    if (any(coefs < 0)) {
+        stop("'coefs' must be non-negative: the M-spline basis is ",
+            "itself non-negative, so a negative coefficient would make ",
+            "the hazard negative.", call. = FALSE)
+    }
+    if (end > boundary_knots[2]) {
+        stop("'end' (", end, ") exceeds boundary_knots[2] (",
+            boundary_knots[2], "). The M-spline basis is identically ",
+            "zero beyond the upper boundary knot, so the hazard would ",
+            "silently drop to zero there instead of extrapolating; ",
+            "supply a wider 'boundary_knots' or a smaller 'end' (the ",
+            "same restriction sim_tte(type = \"ms\")'s own ",
+            "'end_time > max(time)' check already applies, for the ",
+            "same reason).", call. = FALSE)
+    }
+    invisible(TRUE)
+}
+
+#' Build the sim_tte_ode(model = "mspline") $PARAM override list
+#'
+#' Maps \code{knots}/\code{boundary_knots}/\code{coefs} to the
+#' \code{bk_lo}/\code{bk_hi}/\code{k1..kK}/\code{c1..cM} names every
+#' \code{mspline_ode_k*.cpp} variant declares.
+#'
+#' @param knots,boundary_knots,coefs As validated by
+#'   \code{\link{.validate_mspline_args}}.
+#' @return Named list, mergeable into \code{sim_tte_ode()}'s own
+#'   \code{param} argument.
+#' @noRd
+.build_mspline_param <- function(knots, boundary_knots, coefs) {
+    p <- list(bk_lo = boundary_knots[1], bk_hi = boundary_knots[2])
+    for (i in seq_along(knots)) p[[paste0("k", i)]] <- knots[i]
+    for (i in seq_along(coefs)) p[[paste0("c", i)]] <- coefs[i]
+    p
 }
 
 #' Validate the sim_tte_ode() model contract
@@ -808,6 +955,244 @@
         evid = 1L, amt = 0, cmt = cmt)
 }
 
+#' Apply an omega/sigma matrix to a sim_tte_ode() model, with an
+#' informative error instead of mrgsolve's own cryptic one
+#'
+#' \code{mrgsolve::omat(mod, matrix)}/\code{smat()} only \emph{update}
+#' an already-declared OMEGA/SIGMA block; a model that declares none at
+#' all (every \code{sim_tte_ode()} library model as of Phase 4, none of
+#' which wires \code{ETA(n)} into any parameter -- verified directly,
+#' including against an unmodified \code{mrgsolve::mread()} of
+#' \code{pk2cmt} itself, which fails identically) errors with
+#' \code{"improper signature: omat"}, which names neither the argument
+#' nor the reason. This wraps that call so the user sees a clear
+#' explanation instead (\code{reports/10_phase4_report.md} open risks).
+#'
+#' @param mod A compiled mrgsolve model object.
+#' @param value The \code{omega}/\code{sigma} matrix supplied by the
+#'   caller.
+#' @param arg Character. \code{"omega"} or \code{"sigma"}, for the error
+#'   message.
+#' @param fn \code{mrgsolve::omat} or \code{mrgsolve::smat}.
+#' @return The updated model object.
+#' @noRd
+.apply_ode_matlist <- function(mod, value, arg, fn) {
+    tryCatch(fn(mod, value), error = function(e) {
+        stop("Could not apply '", arg, "' to this sim_tte_ode() model: ",
+            conditionMessage(e), ". This usually means the model does ",
+            "not declare a matching $", toupper(arg), " block: mrgsolve's ",
+            "omat()/smat() only update an already-declared block, they ",
+            "do not create one from nothing, and none of the built-in ",
+            "sim_tte_ode() library models declares one as of this ",
+            "release (reports/10_phase4_report.md). '", arg, "' is only ",
+            "usable with a model you supply yourself that already ",
+            "declares a $", toupper(arg), " block of the same dimension.",
+            call. = FALSE)
+    })
+}
+
+#' Between-subject variability (BSV) targets for the built-in PK/PD
+#' hazard library
+#'
+#' \code{reports/11_bsv_review.md} option (b): per-subject parameter
+#' values via \code{idata} (the same mechanism \code{U}/\code{END}
+#' already use), not a declared \code{$OMEGA} block -- verified
+#' directly (that session's \code{reports/experiments/}) to need zero
+#' model-file changes, unlike the classic \code{TVCL}/\code{ETA()}
+#' rename idiom.
+#'
+#' One entry per PK/PD library model (\code{reports/10_phase4_report.md}),
+#' the ordered character vector of every *structural* PK/PD parameter
+#' declared in that model's own \code{$PARAM} block(s) -- i.e. the
+#' backbone's own parameters, taken from the compiled model itself
+#' while writing this list (\code{reports/12_bsv_implementation_report.md}),
+#' not from memory. The hazard-side parameters this package's own
+#' scaffold adds (\code{H0}, \code{lp}, \code{beta_cp}/\code{beta_r}/
+#' \code{beta_rc}, \code{U}, \code{END}) are deliberately excluded --
+#' BSV on the hazard's own log-linear terms is not what this mechanism
+#' is for (a user wanting that already has \code{lp}/\code{covariates}).
+#' \code{exponential}/\code{weibull}/\code{gompertz}/\code{mspline}
+#' have no entry: \code{omega}/\code{sigma} on those keeps the existing
+#' \code{\link{.apply_ode_matlist}} informative error.
+#' @noRd
+.ODE_BSV_TARGETS <- list(
+    pk_hazard = c("CL", "V2", "Q", "V3", "KA", "KA2", "VMAX", "KM"),
+    irm1_hazard = c("CL", "V2", "Q", "V3", "KA", "KA2", "KIN", "KOUT",
+        "IC50", "IMAX", "n", "VMAX", "KM"),
+    irm2_hazard = c("CL", "V2", "Q", "V3", "KA", "KA2", "KIN", "KOUT",
+        "IC50", "IMAX", "n", "VMAX", "KM"),
+    irm3_hazard = c("CL", "V2", "Q", "V3", "KA", "KA2", "KIN", "KOUT",
+        "EC50", "EMAX", "n", "VMAX", "KM"),
+    irm4_hazard = c("CL", "V2", "KA", "KA2", "Q", "V3", "KIN", "KOUT",
+        "EC50", "EMAX", "VMAX", "KM", "n"),
+    tmdd_hazard = c("KPT", "KTP", "V2", "KA", "KA2", "KEL", "R0", "KDEG",
+        "KINT", "KON", "KOFF")
+)
+
+#' Draw per-subject BSV parameter values and append them to \code{idata}
+#'
+#' Implements \code{reports/11_bsv_review.md} option (b): draws ETAs
+#' from \code{omega} with \code{\link[mrgsolve]{mvgauss}} (already
+#' exported by mrgsolve, no new dependency), transforms them
+#' log-normally (\code{param_i = param_pop * exp(eta)}, the convention
+#' already implicit in every one of these models' own PK parameters),
+#' and appends the result as ordinary \code{idata} columns -- exactly
+#' the mechanism \code{\link{.build_ode_idata}} already uses for
+#' \code{U}. No model file is read or changed by this function.
+#'
+#' \strong{Seeding}: draws \code{n = nrow(idata)} rows in one call,
+#' without passing \code{seed} to \code{\link[mrgsolve]{mvgauss}}
+#' itself, relying on \code{sim_tte_ode()}'s own top-level
+#' \code{set.seed(seed)} the way \code{U} already does. Verified
+#' directly (\code{reports/experiments/}, this session) that
+#' \code{mvgauss()}'s draw, for a fixed \code{seed}, is reproducible
+#' and -- surprisingly -- \strong{insensitive to any \code{runif()}/
+#' \code{rnorm()} draws made in between} (e.g. the \code{U} draw
+#' already made by \code{\link{.build_ode_idata}}): calling it after
+#' \code{U} or calling it as the very first draw of the session gives
+#' the identical result for the same \code{seed}. This was confirmed
+#' empirically, not assumed from mrgsolve's documentation. It does mean
+#' one \code{seed} deterministically reproduces \strong{both} \code{U}
+#' and the BSV draw regardless of draw order -- the property this
+#' function's reproducibility contract relies on -- but two separate
+#' \code{mvgauss()} calls in the same session (not done here; this
+#' function only ever calls it once, on the full requested matrix) do
+#' differ from each other, so this is not "always the same output"
+#' more generally, only "insensitive to intervening ordinary R draws".
+#'
+#' @param omega Numeric square matrix. Either \strong{named}
+#'   (\code{dimnames} identical row/column parameter names, any subset
+#'   of \code{model}'s BSV targets, any order) or \strong{unnamed}
+#'   (dimension must equal the full length of \code{model}'s target
+#'   list; applied positionally, in \code{.ODE_BSV_TARGETS} order).
+#' @param model Character. Must have a \code{.ODE_BSV_TARGETS} entry.
+#' @param n Integer. Expected number of subjects; checked against
+#'   \code{nrow(idata)} defensively (the draw itself uses
+#'   \code{nrow(idata)}).
+#' @param idata Data frame, already carrying \code{ID}/\code{U}/
+#'   \code{END} (\code{\link{.build_ode_idata}}'s output). Must not
+#'   already contain a column named after any drawn target.
+#' @param param Named list or named numeric vector of the
+#'   \strong{already-resolved} population parameter values (i.e.
+#'   \code{as.list(mrgsolve::param(mod))} after the caller's own
+#'   \code{param =} overrides have been merged in) -- so
+#'   \code{param = list(CL = 3)} together with \code{omega} on
+#'   \code{"CL"} centers the draw on 3, not the model file's own
+#'   default.
+#' @return \code{idata} with one new column per drawn target.
+#' @noRd
+.build_ode_bsv_idata <- function(omega, model, n, idata, param) {
+    targets <- .ODE_BSV_TARGETS[[model]]
+    if (is.null(targets)) {
+        stop("sim_tte_ode(): model = \"", model, "\" has no built-in ",
+            "between-subject-variability targets. See ?sim_tte_ode ",
+            "\"Between-subject variability\".", call. = FALSE)
+    }
+    if (!is.matrix(omega) || !is.numeric(omega) || nrow(omega) != ncol(omega)) {
+        stop("'omega' must be a square numeric matrix. Valid ",
+            "between-subject-variability targets for model = \"", model,
+            "\": ", paste(targets, collapse = ", "), ".", call. = FALSE)
+    }
+    dn <- dimnames(omega)
+    named <- !is.null(dn) && !is.null(dn[[1]]) && !is.null(dn[[2]])
+    used <- if (named) {
+        if (!identical(dn[[1]], dn[[2]])) {
+            stop("'omega' row and column names must be identical (same ",
+                "parameter names, same order).", call. = FALSE)
+        }
+        if (anyDuplicated(dn[[1]])) {
+            stop("'omega' has duplicated parameter names.", call. = FALSE)
+        }
+        unknown <- setdiff(dn[[1]], targets)
+        if (length(unknown)) {
+            stop("'omega' names parameter(s) not in model = \"", model,
+                "\"'s between-subject-variability targets: ",
+                paste(unknown, collapse = ", "), ". Valid targets: ",
+                paste(targets, collapse = ", "), ".", call. = FALSE)
+        }
+        dn[[1]]
+    } else if (!is.null(dn)) {
+        stop("'omega' must have both row and column names, or neither ",
+            "(positional, matching all ", length(targets), " targets ",
+            "in order: ", paste(targets, collapse = ", "), ").",
+            call. = FALSE)
+    } else {
+        if (nrow(omega) != length(targets)) {
+            stop("An unnamed 'omega' must have dimension ", length(targets),
+                " x ", length(targets), " (one row/column per target, in ",
+                "order: ", paste(targets, collapse = ", "), ") for model = \"",
+                model, "\"; got ", nrow(omega), " x ", ncol(omega), ". Name ",
+                "'omega's dimnames to supply a subset instead.",
+                call. = FALSE)
+        }
+        targets
+    }
+    clash <- intersect(used, names(idata))
+    if (length(clash)) {
+        stop("'idata' already has column(s) matching between-subject-",
+            "variability target(s): ", paste(clash, collapse = ", "),
+            ". Supply either 'idata' columns or 'omega' for a given ",
+            "parameter, not both.", call. = FALSE)
+    }
+    param <- as.list(param)
+    missing_pop <- setdiff(used, names(param))
+    if (length(missing_pop)) {
+        stop("No resolved population value for: ",
+            paste(missing_pop, collapse = ", "), ".", call. = FALSE)
+    }
+    if (!isTRUE(n == nrow(idata))) {
+        stop("'n' (", n, ") does not match nrow(idata) (", nrow(idata),
+            ").", call. = FALSE)
+    }
+
+    omega_use <- if (named) omega[used, used, drop = FALSE] else omega
+    eta <- mrgsolve::mvgauss(omega_use, n = nrow(idata))
+    for (j in seq_along(used)) {
+        idata[[used[j]]] <- as.numeric(param[[used[j]]]) * exp(eta[, j])
+    }
+    idata
+}
+
+#' Classify why a subject's event time used the reported-grid fallback
+#'
+#' Two fallback-triggering mechanisms have been characterized so far,
+#' purely from the bracket columns \code{\link{.resolve_ode_events}}
+#' already captures -- no new model-side logic
+#' (\code{reports/04_author_decisions.md} "After Phase 3" decision 1):
+#' \itemize{
+#'   \item \strong{weibull_type}: \code{p_post} outside \code{[0, 1]} --
+#'     a genuine solver overshoot across one large internal step
+#'     (\code{reports/08_phase2_5_report.md} section 4, Weibull
+#'     \code{shape >= 5}). Remedy: a finer \code{delta}/\code{add}.
+#'   \item \strong{mspline_type}: \code{t_pre == tevt} exactly, with
+#'     both \code{p_pre} and \code{p_post} legitimate probabilities --
+#'     a same-timestamp, multiple-corrector-iteration degeneracy near a
+#'     locally steep hazard (\code{reports/09_phase3_report.md} open
+#'     risk 1). Remedy: tighter \code{rtol}/\code{atol}, not
+#'     \code{delta} (confirmed flat across \code{delta} in that
+#'     report).
+#'   \item \strong{unclassified}: neither signature matches (including
+#'     when the bracket columns are unavailable at all, i.e.
+#'     \code{has_bracket = FALSE} in the caller) -- generic advice only.
+#' }
+#'
+#' @param t_pre,p_pre,tevt,p_post Numeric scalars, the bracket as
+#'   captured from the model, or \code{NA_real_} if unavailable.
+#' @return Character scalar: one of \code{"weibull_type"},
+#'   \code{"mspline_type"}, \code{"unclassified"}.
+#' @noRd
+.classify_ode_fallback <- function(t_pre, p_pre, tevt, p_post) {
+    if (is.finite(p_post) && (p_post < 0 || p_post > 1)) {
+        return("weibull_type")
+    }
+    if (is.finite(t_pre) && is.finite(tevt) && t_pre == tevt &&
+        is.finite(p_pre) && p_pre >= 0 && p_pre <= 1 &&
+        is.finite(p_post) && p_post >= 0 && p_post <= 1) {
+        return("mspline_type")
+    }
+    "unclassified"
+}
+
 #' Refine an event time from the in-solver pre/post-crossing bracket
 #'
 #' Grid-free counterpart to the old reported-grid refinement
@@ -893,7 +1278,7 @@
         # R side regardless of the in-model SOLVERTIME <= END guard.
         if (!isTRUE(as.logical(last$event_found)) || last$TEVT >= end_i) {
             return(data.frame(ID = id, sim_time = end_i, sim_status = 0L,
-                used_fallback = FALSE))
+                used_fallback = FALSE, fallback_signature = NA_character_))
         }
 
         sim_time <- if (has_bracket) {
@@ -904,6 +1289,14 @@
             NA_real_
         }
         used_fallback <- is.na(sim_time)
+        fallback_signature <- if (!used_fallback) {
+            NA_character_
+        } else if (has_bracket) {
+            .classify_ode_fallback(t_pre = last$T_PRE, p_pre = last$P_PRE,
+                tevt = last$TEVT, p_post = last$P_POST)
+        } else {
+            "unclassified"
+        }
 
         if (used_fallback) {
             # Fallback: reported-grid refinement (pre-Phase-2.5 method).
@@ -929,18 +1322,49 @@
             }
         }
         data.frame(ID = id, sim_time = sim_time, sim_status = 1L,
-            used_fallback = used_fallback)
+            used_fallback = used_fallback,
+            fallback_signature = fallback_signature)
     })
     out <- dplyr::bind_rows(rows)
     n_fallback <- sum(out$used_fallback)
     if (n_fallback > 0L) {
+        # Differentiated fallback message (reports/04_author_decisions.md
+        # "After Phase 3" decision 1): classify purely from the already-
+        # captured bracket columns (.classify_ode_fallback()), report
+        # only the non-zero buckets, each with its own matching remedy.
+        n_weibull <- sum(out$fallback_signature == "weibull_type",
+            na.rm = TRUE)
+        n_mspline <- sum(out$fallback_signature == "mspline_type",
+            na.rm = TRUE)
+        n_other <- sum(out$fallback_signature == "unclassified",
+            na.rm = TRUE)
+        parts <- character(0)
+        if (n_weibull > 0L) {
+            parts <- c(parts, paste0(n_weibull, " subject(s) had an ",
+                "unphysical P_POST outside [0, 1] (a genuine solver ",
+                "overshoot across one large internal step) -- a finer ",
+                "'delta'/'add' resolves this"))
+        }
+        if (n_mspline > 0L) {
+            parts <- c(parts, paste0(n_mspline, " subject(s) had ",
+                "T_PRE == TEVT with both P_PRE and P_POST legitimate ",
+                "probabilities (a same-timestamp corrector-iteration ",
+                "degeneracy near a locally steep hazard) -- tighter ",
+                "'rtol'/'atol' resolves this, not 'delta'"))
+        }
+        if (n_other > 0L) {
+            parts <- c(parts, paste0(n_other, " subject(s) fell back ",
+                "for an unclassified reason (or the bracket columns ",
+                "were unavailable) -- try a finer 'delta'/'add' and/or ",
+                "tighter 'rtol'/'atol'"))
+        }
         message("sim_tte_ode(): ", n_fallback, " subject(s) used the ",
-            "reported-grid refinement fallback (the in-solver pre-",
-            "crossing bracket was degenerate or unavailable); a finer ",
-            "'delta'/'add' improves those event times. See ?sim_tte_ode ",
+            "reported-grid refinement fallback: ",
+            paste(parts, collapse = "; "), ". See ?sim_tte_ode ",
             "\"Event-time refinement\".")
     }
     out$used_fallback <- NULL
+    out$fallback_signature <- NULL
     out
 }
 

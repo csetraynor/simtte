@@ -13,4 +13,6 @@ inst/doc
 .Rcheck/
 *md
 .DS_Store
+^dev$
+Makefile
 ^simtte-manuscript-submission$
