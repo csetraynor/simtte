@@ -185,5 +185,6 @@ head(result2)
 \seealso{
 \code{\link{sim_tte_ode}}, for the in-solver event-detection
   mechanism (joint PK/PD and time-to-event simulation) this function
-  does not implement.
+  does not implement. \code{\link{add_censoring}}, to apply
+  independent right censoring to this function's output.
 }

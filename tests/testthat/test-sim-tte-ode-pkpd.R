@@ -22,7 +22,8 @@ for (.m in .PKPD_MODELS) {
                 param = .PKPD_TEST_DEFAULT_PARAM[[model]], n = 20, end = 20,
                 delta = 2, data = .pkpd_dose_data(20), seed = 1)
             expect_s3_class(sim, "simtte_ode_sim")
-            expect_named(sim$events, c("ID", "sim_time", "sim_status"))
+            expect_named(sim$events,
+                c("ID", "sim_time", "sim_status", "sim_reason"))
             expect_equal(nrow(sim$events), 20)
             expect_true(all(sim$events$sim_status %in% c(0L, 1L)))
             expect_true(all(sim$events$sim_time >= 0 &
@@ -126,7 +127,8 @@ test_that(".resolve_ode_events() emits one differentiated message naming all thr
     # Subject 4 used the in-solver bracket directly, not the fallback.
     expect_false(out$sim_time[out$ID == 4] %in%
         c(out$sim_time[out$ID == 1], out$sim_time[out$ID == 2]))
-    expect_identical(names(out), c("ID", "sim_time", "sim_status"))
+    expect_identical(names(out),
+        c("ID", "sim_time", "sim_status", "sim_reason"))
 })
 
 test_that(".resolve_ode_events() emits no message when no subject falls back", {

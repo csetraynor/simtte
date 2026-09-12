@@ -103,7 +103,8 @@ test_that("omega = NULL is unaffected [CRAN]", {
     sim <- sim_tte_ode(model = "pk_hazard", param = list(H0 = 0.01,
         beta_cp = 0.02), n = 10, end = 20, delta = 2,
         data = .pkpd_dose_data(10), seed = 1)
-    expect_identical(names(sim$events), c("ID", "sim_time", "sim_status"))
+    expect_identical(names(sim$events),
+        c("ID", "sim_time", "sim_status", "sim_reason"))
 })
 
 # ---------------------------------------------------------------------

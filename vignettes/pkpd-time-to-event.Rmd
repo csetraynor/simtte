@@ -249,7 +249,69 @@ parallel workflow, give each worker its own cache directory, or simply
 let each one recompile -- the compile cost is small next to the
 parallel speed-up.
 
-## 6. Backward compatibility
+## 6. Right censoring
+
+Every simulation so far has been administratively censored at `end`
+only. `add_censoring()` layers a second, independent censoring process
+on top of any `$events`-shaped output (`sim_tte_ode()`, `sim_tte()`, or
+`sim_tte_df()`), drawing a per-subject censoring time and taking
+`min(event time, censoring time, end)`:
+
+```{r censoring-basic}
+sim_uncensored <- sim_tte_ode(model = "exponential",
+  param = list(H0 = 0.05), n = 200, end = 30, delta = 2, seed = 1)
+table(sim_uncensored$events$sim_reason)
+
+censored <- add_censoring(sim_uncensored$events,
+  censoring = list(dist = "exponential", rate = 0.02), end = 30, seed = 2)
+table(censored$sim_reason)
+```
+
+`sim_status`/`sim_time` are updated in place (so any existing code
+reading those two columns keeps working); `sim_reason` records why --
+`"event"`, `"censored"` (pulled earlier by the independent draw), or
+`"administrative"` (hit `end`). `sim_tte_ode()` also accepts a
+`censoring = ` argument directly, drawing inside the same seeded call
+as `U`:
+
+```{r censoring-arg}
+sim_censored <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+  n = 200, end = 30, delta = 2,
+  censoring = list(dist = "exponential", rate = 0.02), seed = 1)
+table(sim_censored$events$sim_reason)
+```
+
+Choosing a `rate` in the model's own time units from a target
+censoring fraction ("about 20% independently censored") is what
+`censoring_rate_for()` is for -- it solves for the rate using the event
+times from an uncensored run as a stand-in for the true event-time
+distribution, then a quick redraw on a larger cohort confirms it landed
+close to the target:
+
+```{r censoring-rate-for}
+event_times <- sim_uncensored$events$sim_time[
+  sim_uncensored$events$sim_status == 1]
+rate_20pct <- censoring_rate_for(event_times, target = 0.2)
+rate_20pct
+
+check <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+  n = 2000, end = 30, delta = 2,
+  censoring = list(dist = "exponential", rate = rate_20pct), seed = 1)
+mean(check$events$sim_reason == "censored")
+```
+
+This is an approximation (it depends on the particular uncensored run
+it is given), which is why the check above matters more than the
+solved rate itself. `"weibull"` (fixed `shape`, solves for `scale`),
+`"uniform"` (a fixed interval -- the common case for uniform-accrual
+administrative censoring), and `"user"` (any function `n -> numeric(n)`)
+are the other three `dist` options; see `?add_censoring`. Censoring
+that depends on a subject's own simulated PK/PD trajectory (informative
+dropout, e.g. driven by toxicity) is out of scope -- see
+`reports/16_censoring_design.md` for why, and what a future version
+supporting it would need to change.
+
+## 7. Backward compatibility
 
 `sim_tte()` and `sim_tte_df()` -- the original, closed-form/grid-based
 API -- are unchanged:

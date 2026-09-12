@@ -162,7 +162,7 @@ test_that("sim_tte_ode() runs a converted simtte_model and returns well-formed $
     sim <- sim_tte_ode(model = tm, n = 20, end = 20, delta = 2,
         data = .pkpd_dose_data(20), seed = 1)
     expect_s3_class(sim, "simtte_ode_sim")
-    expect_named(sim$events, c("ID", "sim_time", "sim_status"))
+    expect_named(sim$events, c("ID", "sim_time", "sim_status", "sim_reason"))
     expect_equal(nrow(sim$events), 20)
 })
 
