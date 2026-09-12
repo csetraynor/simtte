@@ -35,12 +35,21 @@
 #' \code{\link{add_censoring}} adds a second, independent censoring
 #' process to the output of any of the three simulation functions above:
 #' a per-subject censoring time drawn from an exponential, Weibull,
-#' uniform, or user-supplied distribution, with the observed time
-#' becoming \code{min(event time, censoring time, administrative end)}.
-#' \code{\link{censoring_rate_for}} solves for the distribution
-#' parameter giving a target censoring fraction. \code{\link{sim_tte_ode}}
-#' also accepts a \code{censoring} argument that applies this
-#' automatically, inside its own seeded draw.
+#' uniform, lognormal, gamma, or user-supplied distribution, with the
+#' observed time becoming \code{min(event time, censoring time,
+#' administrative end)}. \code{\link{censoring_rate_for}} solves for the
+#' distribution parameter giving a target censoring fraction.
+#' \code{\link{sim_tte_ode}} also accepts a \code{censoring} argument
+#' that applies this automatically, inside its own seeded draw.
+#'
+#' @section Interval censoring:
+#' \code{\link{add_interval_censoring}} maps an already-simulated (and,
+#' if applicable, already right-censored) outcome onto an interval
+#' \code{(L, R]}, given a visit/assessment-time schedule --
+#' \code{\link{visit_schedule}} builds one with fixed spacing and
+#' optional per-subject jitter. \code{\link{sim_tte_ode}} also accepts a
+#' \code{visits} argument that applies this automatically, always after
+#' any \code{censoring}.
 #'
 #' @references
 #' Bender R, Augustin T, Blettner M (2005). Generating survival times to

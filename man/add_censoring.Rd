@@ -31,6 +31,15 @@ with a \code{dist} element:
   \item{\code{"uniform"}}{\code{min}, \code{max} (\code{0 <= min <
     max}). \code{C ~ Uniform(min, max)} -- the common case for a
     uniform-accrual administrative censoring time.}
+  \item{\code{"lognormal"}}{\code{meanlog} (finite scalar),
+    \code{sdlog} (positive scalar). \code{C ~ Lognormal(meanlog,
+    sdlog)} (\code{\link[stats]{rlnorm}} parameterization).}
+  \item{\code{"gamma"}}{\code{shape}, \code{rate} (positive
+    scalars). \code{C ~ Gamma(shape, rate)}
+    (\code{\link[stats]{rgamma}} parameterization) --
+    \code{rate} only, matching \code{"exponential"}'s own
+    rate-only convention (a \code{scale} element is an error, not
+    silently accepted).}
   \item{\code{"user"}}{\code{fun}, a function \code{n -> numeric(n)}
     returning \code{n} non-negative, finite censoring times. The
     escape hatch for any distribution not covered above.}

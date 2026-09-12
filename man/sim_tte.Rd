@@ -268,4 +268,7 @@ to prognostic modelling and estimation of treatment effects.
   does not implement. \code{\link{add_censoring}}, to apply
   independent right censoring to this function's output (no argument
   here for that -- call it directly on the returned data frame).
+  \code{\link{add_interval_censoring}}, to map its output onto an
+  assessment-time interval (call \code{add_censoring()} first, if
+  using both).
 }
