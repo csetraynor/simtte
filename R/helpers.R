@@ -1062,10 +1062,18 @@
 #'
 #' @param omega Numeric square matrix. Either \strong{named}
 #'   (\code{dimnames} identical row/column parameter names, any subset
-#'   of \code{model}'s BSV targets, any order) or \strong{unnamed}
-#'   (dimension must equal the full length of \code{model}'s target
-#'   list; applied positionally, in \code{.ODE_BSV_TARGETS} order).
-#' @param model Character. Must have a \code{.ODE_BSV_TARGETS} entry.
+#'   of \code{targets}, any order) or \strong{unnamed} (dimension must
+#'   equal \code{length(targets)}; applied positionally, in
+#'   \code{targets} order).
+#' @param targets Character vector of valid BSV target names for this
+#'   model -- \code{.ODE_BSV_TARGETS[[model]]} for a built-in library
+#'   model, or a \code{tte_model()}-converted model's own
+#'   \code{bsv_targets} (\code{reports/13_converter_design.md} section
+#'   5; generalized from a \code{model} character-name lookup to this
+#'   plain vector so both sources share one code path).
+#' @param model_label Character. Used only in error messages (a
+#'   built-in library model's name, or a converted model's own
+#'   \code{name}).
 #' @param n Integer. Expected number of subjects; checked against
 #'   \code{nrow(idata)} defensively (the draw itself uses
 #'   \code{nrow(idata)}).
@@ -1081,17 +1089,18 @@
 #'   default.
 #' @return \code{idata} with one new column per drawn target.
 #' @noRd
-.build_ode_bsv_idata <- function(omega, model, n, idata, param) {
-    targets <- .ODE_BSV_TARGETS[[model]]
+.build_ode_bsv_idata <- function(omega, targets, model_label, n, idata,
+    param) {
     if (is.null(targets)) {
-        stop("sim_tte_ode(): model = \"", model, "\" has no built-in ",
+        stop("sim_tte_ode(): model = \"", model_label, "\" has no ",
             "between-subject-variability targets. See ?sim_tte_ode ",
             "\"Between-subject variability\".", call. = FALSE)
     }
     if (!is.matrix(omega) || !is.numeric(omega) || nrow(omega) != ncol(omega)) {
         stop("'omega' must be a square numeric matrix. Valid ",
-            "between-subject-variability targets for model = \"", model,
-            "\": ", paste(targets, collapse = ", "), ".", call. = FALSE)
+            "between-subject-variability targets for model = \"",
+            model_label, "\": ", paste(targets, collapse = ", "), ".",
+            call. = FALSE)
     }
     dn <- dimnames(omega)
     named <- !is.null(dn) && !is.null(dn[[1]]) && !is.null(dn[[2]])
@@ -1105,8 +1114,8 @@
         }
         unknown <- setdiff(dn[[1]], targets)
         if (length(unknown)) {
-            stop("'omega' names parameter(s) not in model = \"", model,
-                "\"'s between-subject-variability targets: ",
+            stop("'omega' names parameter(s) not in model = \"",
+                model_label, "\"'s between-subject-variability targets: ",
                 paste(unknown, collapse = ", "), ". Valid targets: ",
                 paste(targets, collapse = ", "), ".", call. = FALSE)
         }
@@ -1121,8 +1130,8 @@
             stop("An unnamed 'omega' must have dimension ", length(targets),
                 " x ", length(targets), " (one row/column per target, in ",
                 "order: ", paste(targets, collapse = ", "), ") for model = \"",
-                model, "\"; got ", nrow(omega), " x ", ncol(omega), ". Name ",
-                "'omega's dimnames to supply a subset instead.",
+                model_label, "\"; got ", nrow(omega), " x ", ncol(omega),
+                ". Name 'omega's dimnames to supply a subset instead.",
                 call. = FALSE)
         }
         targets

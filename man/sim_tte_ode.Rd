@@ -26,12 +26,14 @@ sim_tte_ode(
 )
 }
 \arguments{
-\item{model}{Character string naming a bundled library model: one of
-\code{"exponential"}, \code{"weibull"}, \code{"gompertz"},
+\item{model}{Character string naming a bundled library model
+(\code{"exponential"}, \code{"weibull"}, \code{"gompertz"},
 \code{"mspline"}, \code{"pk_hazard"}, \code{"irm1_hazard"},
 \code{"irm2_hazard"}, \code{"irm3_hazard"}, \code{"irm4_hazard"},
-\code{"tmdd_hazard"}. A user-supplied compiled \code{mrgmod} is not
-yet accepted (Phase 5).}
+\code{"tmdd_hazard"}), or a \code{simtte_model} produced by
+\code{\link{tte_model}} (Phase 5a). A bare compiled \code{mrgmod}
+(not wrapped in a \code{simtte_model}) is not accepted directly --
+convert it first with \code{\link{tte_model}}.}
 
 \item{param}{Named list or named numeric vector of population-level
 \code{$PARAM} overrides, forwarded to \code{\link[mrgsolve]{param}}.
@@ -158,10 +160,13 @@ implemented as of Phase 2; \code{model = "mspline"} as of Phase 3 (see
 "M-spline knot-count variants" below); the six PK/PD-linked models
 (\code{"pk_hazard"}, \code{"irm1_hazard"}--\code{"irm4_hazard"},
 \code{"tmdd_hazard"}) as of Phase 4 (see "PK/PD-linked hazard models"
-below). An exported model-discovery function analogous to
-\code{\link{simtte_example_models}}, and a user-supplied compiled
-\code{mrgmod}, are later phases
-(\code{reports/03_implementation_plan.md} Phase 5).
+below). As of Phase 5a, \code{model} may also be a \code{simtte_model}
+produced by \code{\link{tte_model}}, which converts a user's own
+\pkg{mrgsolve} PK/PD model into one usable here -- see
+\code{\link{tte_model}}'s own documentation. A bare compiled
+\code{mrgmod} is not accepted directly; convert it first. An exported
+model-discovery function analogous to \code{\link{simtte_example_models}}
+is a later phase (\code{reports/03_implementation_plan.md} Phase 5).
 }
 \section{Boundary guard}{
  the administrative-censoring contract:
@@ -481,4 +486,5 @@ head(sim$events)
 \seealso{
 \code{\link{sim_tte}}, \code{\link{sim_tte_df}}, for the
   grid-based mechanism this function does not replace.
+  \code{\link{tte_model}}, to bring in a user-supplied PK/PD model.
 }

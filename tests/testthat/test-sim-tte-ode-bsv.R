@@ -45,7 +45,9 @@ test_that(".build_ode_bsv_idata() carries the drawn value through exactly [CRAN]
     set.seed(1)
     eta <- mrgsolve::mvgauss(om, n = 8)
     set.seed(1)
-    out <- simtte:::.build_ode_bsv_idata(om, "pk_hazard", n = 8, idata = idata,
+    out <- simtte:::.build_ode_bsv_idata(om,
+        targets = simtte:::.ODE_BSV_TARGETS$pk_hazard,
+        model_label = "pk_hazard", n = 8, idata = idata,
         param = list(CL = 1, V2 = 20))
     expect_equal(out$CL, 1 * exp(eta[, 1]), tolerance = 0)
     expect_equal(out$V2, 20 * exp(eta[, 2]), tolerance = 0)
@@ -261,7 +263,9 @@ test_that("sd(log(CL_i)) recovers the requested omega variance [slow, distributi
     skip_if_not_slow()
     om <- .bsv_om("CL", 0.09)
     idata <- data.frame(ID = 1:2000, U = 0.5, END = 30)
-    out <- simtte:::.build_ode_bsv_idata(om, "pk_hazard", n = 2000,
+    out <- simtte:::.build_ode_bsv_idata(om,
+        targets = simtte:::.ODE_BSV_TARGETS$pk_hazard,
+        model_label = "pk_hazard", n = 2000,
         idata = idata, param = list(CL = 1))
     expect_equal(stats::sd(log(out$CL)), sqrt(0.09), tolerance = 0.05)
 })

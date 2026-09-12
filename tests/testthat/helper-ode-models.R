@@ -46,6 +46,58 @@
 )
 .PKPD_MODELS <- names(.PKPD_TEST_DEFAULT_PARAM)
 
+# Phase 5a (reports/13_converter_design.md section 6, "self-consistency
+# check"): the tte_model() hazard/params spec that reproduces each
+# shipped *_hazard.cpp model exactly. irm1-4's RESP0 -- a $GLOBAL/$MAIN
+# helper the hand-written models use purely for readability -- is
+# inlined as (KIN / KOUT) directly in the hazard expression instead
+# (KIN/KOUT are ordinary, per-subject-constant $PARAM values, so this
+# is numerically identical, not an approximation; see the design
+# report). Params reuse .PKPD_TEST_DEFAULT_PARAM so the two fixtures
+# cannot silently drift apart.
+.PKPD_CONVERTER_SPECS <- list(
+    pk_hazard = list(backbone = "pk2cmt",
+        hazard = "H0 * exp(lp + beta_cp * CP)"),
+    irm1_hazard = list(backbone = "irm1",
+        hazard = "H0 * exp(lp + beta_r * (RESP / (KIN / KOUT) - 1.0))"),
+    irm2_hazard = list(backbone = "irm2",
+        hazard = "H0 * exp(lp + beta_r * (RESP / (KIN / KOUT) - 1.0))"),
+    irm3_hazard = list(backbone = "irm3",
+        hazard = "H0 * exp(lp + beta_r * (RESP / (KIN / KOUT) - 1.0))"),
+    irm4_hazard = list(backbone = "irm4",
+        hazard = "H0 * exp(lp + beta_r * (RESP / (KIN / KOUT) - 1.0))"),
+    tmdd_hazard = list(backbone = "tmdd",
+        hazard = "H0 * exp(lp + beta_rc * RC)")
+)
+
+# mrgsolve::modlib() calls path.package("mrgsolve") internally, which
+# requires mrgsolve to be *attached* (library(mrgsolve)), not merely
+# loaded as simtte's own Imports dependency -- confirmed directly to
+# fail ("none of the packages are loaded") under devtools::test()/
+# R CMD check, where only simtte itself is attached. mrgsolve::mread()
+# with an explicit project = system.file(..., package = "mrgsolve")
+# reproduces modlib()'s own model exactly (verified,
+# reports/experiments -- same param()/init() names, same @code) without
+# that requirement, so it -- not modlib() -- is what tests (and
+# tte_model()'s own roxygen example) use to reach mrgsolve's internal
+# model library.
+.modlib_model <- function(name, ...) {
+    mrgsolve::mread(model = name,
+        project = system.file("models", package = "mrgsolve"), ...)
+}
+
+# One reusable compiled fixture for tte_model() tests that need a real
+# (not error-path) converted model -- mrgsolve::mcode_cache() is
+# content-hash aware (reports/experiments/09_mcode_cache_test.R), so
+# repeated calls with this identical spec across a test file only pay
+# the real C++ compile cost once per session.
+.tte_model_fixture <- function() {
+    tte_model(.modlib_model("pk2cmt", compile = FALSE),
+        hazard = .PKPD_CONVERTER_SPECS$pk_hazard$hazard,
+        params = .PKPD_TEST_DEFAULT_PARAM$pk_hazard,
+        bsv_targets = .ODE_BSV_TARGETS$pk_hazard)
+}
+
 # A single oral bolus at time 0 for every subject, targeting cmt = 1
 # (EV in every one of the six backbones -- see each model's own [CMT]
 # block). Repeated dosing (validation script 12) builds its own regimen
