@@ -21,6 +21,7 @@ sim_tte_ode(
   boundary_knots = NULL,
   coefs = NULL,
   censoring = NULL,
+  visits = NULL,
   seed = NULL,
   keep_trajectory = FALSE,
   ...
@@ -114,6 +115,16 @@ censoring time is drawn per subject and applied to \code{$events}
 via \code{\link{add_censoring}}, inside this call's own seeded
 block -- see "Right censoring" below.}
 
+\item{visits}{\code{NULL} (default), a visit schedule (a numeric
+vector or per-subject data frame, see \code{\link{add_interval_censoring}}),
+or a jitter spec \code{list(every = <spacing>, jitter = <optional>)}.
+When supplied, \code{\link{add_interval_censoring}} is applied to
+\code{$events} \strong{after} any \code{censoring} above -- see
+"Interval censoring" below. The jitter-spec form calls
+\code{\link{visit_schedule}} internally, inside this call's own
+seeded block (\code{\link{add_interval_censoring}} itself does not
+accept this third form).}
+
 \item{seed}{Optional integer. If supplied, \code{set.seed(seed)} is
 called before \code{U} is drawn.}
 
@@ -140,7 +151,9 @@ An object of class \code{"simtte_ode_sim"}, a list with:
   \item{events}{Data frame with columns \code{ID}, \code{sim_time},
     \code{sim_status} (1 = event, 0 = censored), \code{sim_reason}
     (\code{"event"}, \code{"censored"}, or \code{"administrative"} --
-    see "Right censoring" below).}
+    see "Right censoring" below); plus \code{sim_time_left}/
+    \code{sim_time_right} when \code{visits} is supplied (see
+    "Interval censoring" below).}
   \item{trajectory}{The full \code{mrgsim()} output data frame, or
     \code{NULL} unless \code{keep_trajectory = TRUE}.}
   \item{model}{The compiled \code{mrgmod} object used.}
@@ -446,6 +459,26 @@ scope for this release: censoring that depends on a subject's own
 simulated PK/PD trajectory, e.g. dropout driven by toxicity).
 }
 
+\section{Interval censoring}{
+
+Supplying \code{visits} maps the exact (and, if \code{censoring} was
+also supplied, already right-censored) outcome onto an interval,
+via \code{\link{add_interval_censoring}}: an event is only knowable
+at the first visit at or after it happened, giving \code{(L, R]};
+a censored subject is only known event-free through their last visit
+at or before their own censoring time, giving \code{(L, Inf)}.
+\code{sim_time}/\code{sim_status}/\code{sim_reason} are unchanged --
+\code{sim_time_left}/\code{sim_time_right} are added on top. Always
+applied \strong{after} any \code{censoring} (see
+\code{\link{add_interval_censoring}} "Ordering with right censoring"
+for why the order matters); a \code{list(every = , jitter = )} value
+builds the schedule via \code{\link{visit_schedule}} first, inside
+this call's own seeded block. See
+\code{reports/18_interval_censoring_design.md} for the full design,
+including why this is a post-simulation R mapping rather than an
+in-solver mechanism.
+}
+
 \section{Between-subject variability}{
 
 \code{omega} adds between-subject variability (BSV) to the
@@ -523,5 +556,7 @@ head(sim$events)
   \code{\link{tte_model}}, to bring in a user-supplied PK/PD model.
   \code{\link{add_censoring}}, the function \code{censoring} calls
   internally (usable standalone, and on \code{sim_tte()}/
-  \code{sim_tte_df()} output too).
+  \code{sim_tte_df()} output too). \code{\link{add_interval_censoring}}/
+  \code{\link{visit_schedule}}, the functions \code{visits} calls
+  internally.
 }

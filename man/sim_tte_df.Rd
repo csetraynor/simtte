@@ -187,4 +187,7 @@ head(result2)
   mechanism (joint PK/PD and time-to-event simulation) this function
   does not implement. \code{\link{add_censoring}}, to apply
   independent right censoring to this function's output.
+  \code{\link{add_interval_censoring}}, to map its output onto an
+  assessment-time interval (call \code{add_censoring()} first, if
+  using both).
 }

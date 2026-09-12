@@ -23,7 +23,7 @@ test_that("add_censoring() rejects a censoring spec with no 'dist'", {
 
 test_that("add_censoring() rejects an unknown dist", {
     ev <- .fake_events(c(1, 2), c(1, 1))
-    expect_error(add_censoring(ev, censoring = list(dist = "gamma"),
+    expect_error(add_censoring(ev, censoring = list(dist = "cauchy"),
         end = 10), "one of")
 })
 
@@ -51,6 +51,24 @@ test_that("add_censoring() validates uniform's 'min'/'max'", {
         min = 5, max = 5), end = 10), "min.*max")
     expect_error(add_censoring(ev, censoring = list(dist = "uniform",
         min = -1, max = 5), end = 10), "min.*max")
+})
+
+test_that("add_censoring() validates lognormal's 'meanlog'/'sdlog'", {
+    ev <- .fake_events(c(1, 2), c(1, 1))
+    expect_error(add_censoring(ev, censoring = list(dist = "lognormal",
+        sdlog = 0.5), end = 10), "meanlog.*sdlog")
+    expect_error(add_censoring(ev, censoring = list(dist = "lognormal",
+        meanlog = 2, sdlog = -1), end = 10), "meanlog.*sdlog")
+})
+
+test_that("add_censoring() validates gamma's 'shape'/'rate', and rejects 'scale'", {
+    ev <- .fake_events(c(1, 2), c(1, 1))
+    expect_error(add_censoring(ev, censoring = list(dist = "gamma",
+        rate = 0.1), end = 10), "shape.*rate")
+    expect_error(add_censoring(ev, censoring = list(dist = "gamma",
+        shape = 2, rate = -0.1), end = 10), "shape.*rate")
+    expect_error(add_censoring(ev, censoring = list(dist = "gamma",
+        shape = 2, scale = 10), end = 10), "scale.*not accepted")
 })
 
 test_that("add_censoring() validates a user dist's 'fun'", {
@@ -86,6 +104,8 @@ test_that("each dist option draws successfully and returns valid output", {
         exponential = list(dist = "exponential", rate = 0.05),
         weibull = list(dist = "weibull", shape = 1.5, scale = 15),
         uniform = list(dist = "uniform", min = 2, max = 25),
+        lognormal = list(dist = "lognormal", meanlog = 2, sdlog = 0.5),
+        gamma = list(dist = "gamma", shape = 2, rate = 0.1),
         user = list(dist = "user", fun = function(n) stats::rgamma(n, 2, 0.2))
     )
     for (nm in names(specs)) {
@@ -134,7 +154,9 @@ test_that("sim_status == 1 iff sim_reason == 'event', across all dists", {
         sim_status = rbinom(n, 1, 0.7))
     for (spec in list(list(dist = "exponential", rate = 0.03),
         list(dist = "weibull", shape = 0.8, scale = 20),
-        list(dist = "uniform", min = 0, max = 30))) {
+        list(dist = "uniform", min = 0, max = 30),
+        list(dist = "lognormal", meanlog = 2.5, sdlog = 0.8),
+        list(dist = "gamma", shape = 2, rate = 0.08))) {
         out <- add_censoring(ev, censoring = spec, end = 30, seed = 1)
         expect_equal(out$sim_status == 1L, out$sim_reason == "event")
         non_event <- out$sim_reason != "event"
@@ -247,6 +269,34 @@ test_that("censoring_rate_for() solves a weibull scale hitting the target fracti
     ev <- .fake_events(sim_time = times, sim_status = rep(1L, length(times)))
     out <- add_censoring(ev, censoring = list(dist = "weibull", shape = 2,
         scale = scale), end = max(times) + 1, seed = 2)
+    observed <- mean(out$sim_status == 0L)
+    expect_equal(observed, target, tolerance = 0.06)
+})
+
+test_that("censoring_rate_for() solves a lognormal meanlog hitting the target fraction [slow]", {
+    skip_if_not_slow()
+    set.seed(1)
+    times <- stats::rlnorm(3000, meanlog = 2.5, sdlog = 0.8)
+    target <- 0.2
+    meanlog <- censoring_rate_for(times, target = target, dist = "lognormal",
+        sdlog = 0.6)
+    ev <- .fake_events(sim_time = times, sim_status = rep(1L, length(times)))
+    out <- add_censoring(ev, censoring = list(dist = "lognormal",
+        meanlog = meanlog, sdlog = 0.6), end = max(times) + 1, seed = 2)
+    observed <- mean(out$sim_status == 0L)
+    expect_equal(observed, target, tolerance = 0.06)
+})
+
+test_that("censoring_rate_for() solves a gamma rate hitting the target fraction [slow]", {
+    skip_if_not_slow()
+    set.seed(1)
+    times <- stats::rgamma(3000, shape = 2, rate = 0.05)
+    target <- 0.3
+    rate <- censoring_rate_for(times, target = target, dist = "gamma",
+        shape = 2)
+    ev <- .fake_events(sim_time = times, sim_status = rep(1L, length(times)))
+    out <- add_censoring(ev, censoring = list(dist = "gamma", shape = 2,
+        rate = rate), end = max(times) + 1, seed = 2)
     observed <- mean(out$sim_status == 0L)
     expect_equal(observed, target, tolerance = 0.06)
 })

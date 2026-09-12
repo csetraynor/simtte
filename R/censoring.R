@@ -25,6 +25,15 @@
 #'     \item{\code{"uniform"}}{\code{min}, \code{max} (\code{0 <= min <
 #'       max}). \code{C ~ Uniform(min, max)} -- the common case for a
 #'       uniform-accrual administrative censoring time.}
+#'     \item{\code{"lognormal"}}{\code{meanlog} (finite scalar),
+#'       \code{sdlog} (positive scalar). \code{C ~ Lognormal(meanlog,
+#'       sdlog)} (\code{\link[stats]{rlnorm}} parameterization).}
+#'     \item{\code{"gamma"}}{\code{shape}, \code{rate} (positive
+#'       scalars). \code{C ~ Gamma(shape, rate)}
+#'       (\code{\link[stats]{rgamma}} parameterization) --
+#'       \code{rate} only, matching \code{"exponential"}'s own
+#'       rate-only convention (a \code{scale} element is an error, not
+#'       silently accepted).}
 #'     \item{\code{"user"}}{\code{fun}, a function \code{n -> numeric(n)}
 #'       returning \code{n} non-negative, finite censoring times. The
 #'       escape hatch for any distribution not covered above.}
@@ -77,12 +86,7 @@
 #' }
 add_censoring <- function(events, censoring, end, id_var = "ID",
     time_var = "sim_time", status_var = "sim_status", seed = NULL) {
-    events <- as.data.frame(events)
-    for (v in c(id_var, time_var, status_var)) {
-        if (!v %in% names(events)) {
-            stop("Column '", v, "' not found in 'events'.", call. = FALSE)
-        }
-    }
+    events <- .validate_events_columns(events, id_var, time_var, status_var)
     if (!.is_finite_scalar(end) || end < 0) {
         stop("'end' must be a non-negative finite numeric scalar.",
             call. = FALSE)
@@ -121,14 +125,17 @@ add_censoring <- function(events, censoring, end, id_var = "ID",
 #' Users think in terms of "about 20% independently censored before
 #' \code{end}", not in the rate/scale units \code{\link{add_censoring}}
 #' needs, and the right units depend on the model's own time scale. This
-#' solves for the exponential \code{rate} (or, for a fixed Weibull
-#' \code{shape}, the Weibull \code{scale}) that would give a target
-#' independent-censoring fraction, treating \code{times} -- the event
-#' times from an already-run, \strong{uncensored} simulation -- as an
-#' empirical sample of the latent event time \eqn{T}: it solves
-#' \code{mean(1 - exp(-rate * times)) == target} (exponential) or
-#' \code{mean(1 - exp(-(times / scale)^shape)) == target} (Weibull) via
-#' \code{\link[stats]{uniroot}}. This is the Monte Carlo estimate of
+#' solves for one parameter of a fixed-family censoring distribution --
+#' the exponential/gamma \code{rate}, the Weibull \code{scale} at a
+#' fixed \code{shape}, or the lognormal \code{meanlog} at a fixed
+#' \code{sdlog} -- that would give a target independent-censoring
+#' fraction, treating \code{times} -- the event times from an
+#' already-run, \strong{uncensored} simulation -- as an empirical sample
+#' of the latent event time \eqn{T}: it solves \code{mean(F_C(times)) ==
+#' target} via \code{\link[stats]{uniroot}}, where \code{F_C} is the
+#' censoring distribution's own CDF (\code{\link[stats]{pexp}}/
+#' \code{\link[stats]{pweibull}}/\code{\link[stats]{plnorm}}/
+#' \code{\link[stats]{pgamma}}). This is the Monte Carlo estimate of
 #' \eqn{P(C < T)} under independence, using the supplied sample in place
 #' of \eqn{T}'s true (generally not closed-form once between-subject
 #' variability or covariates are in the model) distribution --
@@ -150,13 +157,19 @@ add_censoring <- function(events, censoring, end, id_var = "ID",
 #'   finite.
 #' @param target Numeric scalar in \eqn{(0, 1)}. The desired
 #'   \eqn{P(C < T)}.
-#' @param dist \code{"exponential"} (default) or \code{"weibull"}.
-#' @param shape Required (positive numeric scalar), and used only, for
-#'   \code{dist = "weibull"}: the Weibull shape is fixed by the caller
-#'   and this function solves for \code{scale} alone.
+#' @param dist \code{"exponential"} (default), \code{"weibull"},
+#'   \code{"lognormal"}, or \code{"gamma"}.
+#' @param shape Required (positive numeric scalar) for \code{dist =
+#'   "weibull"} (solves for \code{scale}) or \code{dist = "gamma"}
+#'   (solves for \code{rate}); the shape is fixed by the caller in
+#'   either case. Unused otherwise.
+#' @param sdlog Required (positive numeric scalar) for \code{dist =
+#'   "lognormal"} (solves for \code{meanlog}, with \code{sdlog} fixed
+#'   by the caller). Unused otherwise.
 #'
-#' @return Numeric scalar: \code{rate} for \code{dist = "exponential"},
-#'   \code{scale} for \code{dist = "weibull"}.
+#' @return Numeric scalar: \code{rate} for \code{dist = "exponential"}
+#'   or \code{"gamma"}, \code{scale} for \code{dist = "weibull"},
+#'   \code{meanlog} for \code{dist = "lognormal"}.
 #' @seealso \code{\link{add_censoring}}.
 #' @export
 #' @examples
@@ -170,7 +183,8 @@ add_censoring <- function(events, censoring, end, id_var = "ID",
 #' mean(out$sim_reason == "censored") # close to 0.2, on the events subset
 #' }
 censoring_rate_for <- function(times, target,
-    dist = c("exponential", "weibull"), shape = NULL) {
+    dist = c("exponential", "weibull", "lognormal", "gamma"),
+    shape = NULL, sdlog = NULL) {
     dist <- match.arg(dist)
     if (!is.numeric(times) || length(times) < 1L ||
         any(!is.finite(times)) || any(times < 0)) {
@@ -183,11 +197,36 @@ censoring_rate_for <- function(times, target,
             call. = FALSE)
     }
     if (dist == "exponential") {
-        # (Two differently-shaped local closures named the same, 'f',
-        # would trip R CMD check's "multiple local function definitions"
-        # static-analysis NOTE -- named distinctly instead.)
+        # (Every branch below names its root-finding closure distinctly
+        # -- 'rate_gap'/'scale_gap'/'meanlog_gap' -- rather than reusing
+        # 'f' in each: two differently-shaped local closures named the
+        # same would trip R CMD check's "multiple local function
+        # definitions" static-analysis NOTE.)
         rate_gap <- function(rate) mean(1 - exp(-rate * times)) - target
         return(stats::uniroot(rate_gap, interval = c(1e-10, 1e6))$root)
+    }
+    if (dist == "gamma") {
+        if (!.is_positive_scalar(shape)) {
+            stop("'shape' must be a positive numeric scalar for dist = ",
+                "\"gamma\" (censoring_rate_for() solves for 'rate' at a ",
+                "fixed 'shape').", call. = FALSE)
+        }
+        gamma_rate_gap <- function(rate) {
+            mean(stats::pgamma(times, shape = shape, rate = rate)) - target
+        }
+        return(stats::uniroot(gamma_rate_gap, interval = c(1e-10, 1e6))$root)
+    }
+    if (dist == "lognormal") {
+        if (!.is_positive_scalar(sdlog)) {
+            stop("'sdlog' must be a positive numeric scalar for dist = ",
+                "\"lognormal\" (censoring_rate_for() solves for ",
+                "'meanlog' at a fixed 'sdlog').", call. = FALSE)
+        }
+        meanlog_gap <- function(meanlog) {
+            mean(stats::plnorm(times, meanlog = meanlog, sdlog = sdlog)) -
+                target
+        }
+        return(stats::uniroot(meanlog_gap, interval = c(-100, 100))$root)
     }
     if (!.is_positive_scalar(shape)) {
         stop("'shape' must be a positive numeric scalar for dist = ",
@@ -222,6 +261,28 @@ censoring_rate_for <- function(times, target,
     .is_finite_scalar(x) && x > 0
 }
 
+#' Coerce events to a data frame and confirm id/time/status columns exist
+#'
+#' Shared by \code{\link{add_censoring}} and
+#' \code{\link{add_interval_censoring}} -- both take an arbitrary
+#' events-shaped data frame with configurable column names and need the
+#' same up-front check.
+#'
+#' @param events Data frame (or coercible to one).
+#' @param id_var,time_var,status_var Character scalars naming the
+#'   columns that must be present.
+#' @return \code{events}, coerced via \code{as.data.frame()}.
+#' @noRd
+.validate_events_columns <- function(events, id_var, time_var, status_var) {
+    events <- as.data.frame(events)
+    for (v in c(id_var, time_var, status_var)) {
+        if (!v %in% names(events)) {
+            stop("Column '", v, "' not found in 'events'.", call. = FALSE)
+        }
+    }
+    events
+}
+
 #' Draw n independent censoring times from a censoring spec
 #'
 #' Internal dispatcher shared by \code{\link{add_censoring}}. Kept
@@ -236,8 +297,8 @@ censoring_rate_for <- function(times, target,
 .draw_censoring_times <- function(censoring, n) {
     if (!is.list(censoring) || is.null(censoring$dist)) {
         stop("'censoring' must be a list with a 'dist' element (one of ",
-            "\"exponential\", \"weibull\", \"uniform\", \"user\"); see ",
-            "?add_censoring.", call. = FALSE)
+            "\"exponential\", \"weibull\", \"uniform\", \"lognormal\", ",
+            "\"gamma\", \"user\"); see ?add_censoring.", call. = FALSE)
     }
     dist <- censoring$dist
     times <- switch(dist,
@@ -269,6 +330,31 @@ censoring_rate_for <- function(times, target,
             }
             stats::runif(n, min = mn, max = mx)
         },
+        lognormal = {
+            mlog <- censoring$meanlog
+            slog <- censoring$sdlog
+            if (!.is_finite_scalar(mlog) || !.is_positive_scalar(slog)) {
+                stop("censoring$meanlog must be a finite numeric scalar ",
+                    "and censoring$sdlog a positive numeric scalar for ",
+                    "dist = \"lognormal\".", call. = FALSE)
+            }
+            stats::rlnorm(n, meanlog = mlog, sdlog = slog)
+        },
+        gamma = {
+            if (!is.null(censoring$scale)) {
+                stop("censoring$scale is not accepted for dist = ",
+                    "\"gamma\" -- supply censoring$rate instead ",
+                    "(matching dist = \"exponential\"'s own rate-only ",
+                    "convention).", call. = FALSE)
+            }
+            shp <- censoring$shape
+            rt <- censoring$rate
+            if (!.is_positive_scalar(shp) || !.is_positive_scalar(rt)) {
+                stop("censoring$shape and censoring$rate must be positive ",
+                    "numeric scalars for dist = \"gamma\".", call. = FALSE)
+            }
+            stats::rgamma(n, shape = shp, rate = rt)
+        },
         user = {
             fun <- censoring$fun
             if (is.null(fun) || !is.function(fun)) {
@@ -284,7 +370,8 @@ censoring_rate_for <- function(times, target,
             out
         },
         stop("censoring$dist must be one of \"exponential\", \"weibull\", ",
-            "\"uniform\", \"user\" (got \"", dist, "\").", call. = FALSE)
+            "\"uniform\", \"lognormal\", \"gamma\", \"user\" (got \"",
+            dist, "\").", call. = FALSE)
     )
     if (any(!is.finite(times)) || any(times < 0)) {
         stop("The censoring-time draw contained a non-finite or negative ",
