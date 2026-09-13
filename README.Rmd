@@ -277,20 +277,46 @@ last-observation-carried-forward convention), giving a
 piecewise-constant hazard on the reported grid rather than continuous
 re-evaluation of the M-spline basis at arbitrary times.
 
-### Inverse Transform Sampling
+### How event times are generated
+
+The two engines resolve event times in genuinely different ways --
+this section describes each in turn.
+
+#### `sim_tte_ode()` (default engine for PK/PD-linked and ODE models)
+
+Survival is one more ODE compartment, `p11`, alongside the model's own
+PK/PD states, with `dxdt_p11 = -p11 * HAZ`. A uniform draw
+$U \sim \text{Uniform}(0,1)$ is made **per subject up front** (one
+`stats::runif()` draw per row of `idata`, before the solver runs, not
+after a trajectory exists), and the solver is watched internally for
+the first step at which $p11(t) \le U$ -- an in-solver root, latched at
+the solver's own internal step grid, which is generally finer than,
+and independent of, the requested output grid (`delta`/`add`). Once a
+crossing is latched, the reported event time is refined further inside
+the one solver step that bracketed it (not between two *reported*
+trajectory rows), so refinement accuracy does not depend on how coarse
+`delta`/`add` are. A subject with no crossing before `end` is
+administratively censored at `end`. There is no `event_time_method`
+argument here -- that is a `sim_tte()`/`sim_tte_df()`-only option (see
+below). See `?sim_tte_ode`'s "Event-time refinement" section for the
+full mechanics and `vignette("pkpd-time-to-event")` for a walkthrough.
+
+#### `sim_tte()` / `sim_tte_df()` (legacy 1.0.x engine)
 
 For each individual, the package obtains $S(t)$ on the exact grid
-supplied via `time` (extended to `end_time` if necessary, and reported
-by **mrgsolve** at exactly those times via its `tgrid` mechanism — not
-**mrgsolve**’s own default output schedule), then draws $U \sim
-\text{Uniform}(0,1)$ and finds the first *reported* grid time $t^*$ such
-that $S(t^*) \le U$. If no grid time satisfies $S(t^*) \le U$, the
-observation is administratively censored at `end_time`. By default
-(`event_time_method = "grid"`), event-time resolution is exactly this
-grid-based lookup, with precision limited by the spacing of `time`; see
-below for the optional refinement.
-
-### Event-Time Interpolation
+supplied via `time` (default `seq(0, 100, by = 1)`, extended to
+`end_time` if necessary, and reported by **mrgsolve** at exactly those
+times via its `tgrid` mechanism — not **mrgsolve**’s own default output
+schedule), then draws $U \sim \text{Uniform}(0,1)$ **after** the
+trajectory exists and finds the first *reported* grid time $t^*$ such
+that $S(t^*) \le U$. For `sim_tte()`, a subject with no such $t^*$ is
+administratively censored at `end_time`; `sim_tte_df()` instead censors
+at that subject's own last reported time (which coincides with
+`end_time` for `sim_tte()` by construction, but need not for an
+arbitrary user-supplied trajectory with per-subject time ranges). By
+default (`event_time_method = "grid"`), event-time resolution is
+exactly this grid-based lookup, with precision limited by the spacing
+of `time`.
 
 Setting `event_time_method = "log_survival"` refines a crossing that
 falls strictly between two reported grid points $(t_i, S_i)$ and
@@ -307,7 +333,9 @@ subjects are classified as events versus censored, and never changes the
 reported time for censoring or for a crossing already present at the
 first reported observation — it only provides sub-grid event-time
 resolution for an interior crossing, and is not a general
-continuous-time root solver.
+continuous-time root solver. `event_time_method` does not exist on
+`sim_tte_ode()`, which refines every event time via the in-solver
+bracket described above regardless of the output grid.
 
 ### Custom Survival Trajectories
 
