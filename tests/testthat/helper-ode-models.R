@@ -1,0 +1,221 @@
+# Shared fixtures for the sim_tte_ode() test files (Phase 1/2). testthat
+# sources every tests/testthat/helper-*.R file before any test-*.R file,
+# in every run mode (devtools::test(), R CMD check, testthat::test_dir()),
+# so this is the correct place for cross-file constants -- not a
+# top-level binding in one test file relied on by another.
+
+# Default $PARAM overrides sufficient to run each library model, used by
+# every test parameterized "for every library model" across
+# test-sim-tte-ode-{exponential,weibull,gompertz}.R, rather than
+# hardcoding per-model literals at each call site (Phase 2,
+# reports/03_implementation_plan.md: "parameterise the existing tests
+# over the model names rather than copying them").
+.PHASE2_TEST_DEFAULT_PARAM <- list(
+    exponential = list(H0 = 0.1),
+    weibull = list(mu = -1, shape = 1.5),
+    gompertz = list(mu = -1, gamma = 0.1)
+)
+
+# Phase 3 (reports/09_phase3_report.md): model = "mspline" does not fit
+# the name -> $PARAM-list shape above (it additionally needs
+# knots/coefs/boundary_knots, and its knot count selects which of the
+# three shipped variants is used), so it gets its own small default
+# fixture rather than being forced into .PHASE2_TEST_DEFAULT_PARAM's
+# shape. K = 3 (mspline_ode_k3.cpp) is used as the default variant here
+# for the fastest compile; the other two variants (5, 7) are exercised
+# explicitly where the test is specifically about per-variant behavior
+# (the convention-equivalence test, the R1-style knot-count sweep).
+.MSPLINE_TEST_DEFAULT_ARGS <- list(
+    knots = c(5, 10, 15), coefs = rep(1, 6),
+    param = list(mu = -1)
+)
+
+# Phase 4 (reports/10_phase4_report.md): the six PK/PD-linked models
+# each need a *dosing* data frame (their link quantities -- CP, RESP,
+# RC -- are all at/near a fixed baseline without one, so an undosed run
+# is indistinguishable from the exponential model regardless of beta_*)
+# -- unlike Phase 2/3's models, so they get their own fixtures rather
+# than being forced into .PHASE2_TEST_DEFAULT_PARAM's dosing-free shape.
+.PKPD_TEST_DEFAULT_PARAM <- list(
+    pk_hazard = list(H0 = 0.01, beta_cp = 0.02),
+    irm1_hazard = list(H0 = 0.01, beta_r = 1),
+    irm2_hazard = list(H0 = 0.01, beta_r = 1),
+    irm3_hazard = list(H0 = 0.01, beta_r = 1),
+    irm4_hazard = list(H0 = 0.01, beta_r = 1),
+    tmdd_hazard = list(H0 = 0.01, beta_rc = 0.05)
+)
+.PKPD_MODELS <- names(.PKPD_TEST_DEFAULT_PARAM)
+
+# Phase 5a (reports/13_converter_design.md section 6, "self-consistency
+# check"): the tte_model() hazard/params spec that reproduces each
+# shipped *_hazard.cpp model exactly. irm1-4's RESP0 -- a $GLOBAL/$MAIN
+# helper the hand-written models use purely for readability -- is
+# inlined as (KIN / KOUT) directly in the hazard expression instead
+# (KIN/KOUT are ordinary, per-subject-constant $PARAM values, so this
+# is numerically identical, not an approximation; see the design
+# report). Params reuse .PKPD_TEST_DEFAULT_PARAM so the two fixtures
+# cannot silently drift apart.
+.PKPD_CONVERTER_SPECS <- list(
+    pk_hazard = list(backbone = "pk2cmt",
+        hazard = "H0 * exp(lp + beta_cp * CP)"),
+    irm1_hazard = list(backbone = "irm1",
+        hazard = "H0 * exp(lp + beta_r * (RESP / (KIN / KOUT) - 1.0))"),
+    irm2_hazard = list(backbone = "irm2",
+        hazard = "H0 * exp(lp + beta_r * (RESP / (KIN / KOUT) - 1.0))"),
+    irm3_hazard = list(backbone = "irm3",
+        hazard = "H0 * exp(lp + beta_r * (RESP / (KIN / KOUT) - 1.0))"),
+    irm4_hazard = list(backbone = "irm4",
+        hazard = "H0 * exp(lp + beta_r * (RESP / (KIN / KOUT) - 1.0))"),
+    tmdd_hazard = list(backbone = "tmdd",
+        hazard = "H0 * exp(lp + beta_rc * RC)")
+)
+
+# mrgsolve::modlib() calls path.package("mrgsolve") internally, which
+# requires mrgsolve to be *attached* (library(mrgsolve)), not merely
+# loaded as simtte's own Imports dependency -- confirmed directly to
+# fail ("none of the packages are loaded") under devtools::test()/
+# R CMD check, where only simtte itself is attached. mrgsolve::mread()
+# with an explicit project = system.file(..., package = "mrgsolve")
+# reproduces modlib()'s own model exactly (verified,
+# reports/experiments -- same param()/init() names, same @code) without
+# that requirement, so it -- not modlib() -- is what tests (and
+# tte_model()'s own roxygen example) use to reach mrgsolve's internal
+# model library.
+.modlib_model <- function(name, ...) {
+    mrgsolve::mread(model = name,
+        project = system.file("models", package = "mrgsolve"), ...)
+}
+
+# One reusable compiled fixture for tte_model() tests that need a real
+# (not error-path) converted model -- mrgsolve::mcode_cache() is
+# content-hash aware (reports/experiments/09_mcode_cache_test.R), so
+# repeated calls with this identical spec across a test file only pay
+# the real C++ compile cost once per session.
+.tte_model_fixture <- function() {
+    tte_model(.modlib_model("pk2cmt", compile = FALSE),
+        hazard = .PKPD_CONVERTER_SPECS$pk_hazard$hazard,
+        params = .PKPD_TEST_DEFAULT_PARAM$pk_hazard,
+        bsv_targets = .ODE_BSV_TARGETS$pk_hazard)
+}
+
+# A single oral bolus at time 0 for every subject, targeting cmt = 1
+# (EV in every one of the six backbones -- see each model's own [CMT]
+# block). Repeated dosing (validation script 12) builds its own regimen
+# rather than reusing this single-dose helper.
+.pkpd_dose_data <- function(n, amt = 100) {
+    data.frame(ID = seq_len(n), time = 0, cmt = 1, amt = amt, evid = 1)
+}
+
+# Boundary-guard regression scenario, generalized (Phase 2) over
+# `model`/`param` rather than copied per model: a covariate-update row
+# 0.05 time units before `end`, updating `lp` for every subject --
+# forces the solver to restart its step-size search close to the
+# administrative horizon (design report section 2.7), the mechanism
+# PHASE_E_THRESHOLD_TRACKING_REPORT.md's own M-spline-structure test
+# used to force violations. Originally introduced (Phase 1) hardcoded
+# to the exponential model only.
+.run_ode_boundary_guard_check <- function(model, param, n, seed, end = 10,
+    ...) {
+    set.seed(seed)
+    data <- data.frame(ID = seq_len(n), time = end - 0.05, lp = 0.5,
+        evid = 1, amt = 0, cmt = 1)
+    sim <- sim_tte_ode(model = model, param = param, n = n, end = end,
+        delta = 1, data = data, seed = seed, ...)
+    sim$events
+}
+
+# 4-SE binomial tolerance for empirical-vs-analytical event-probability
+# comparisons; same methodology as test-weibull-distribution.R /
+# inst/validation/01_weibull_validation.R, shared across every
+# analytical-agreement test in the sim_tte_ode() test files. Widens
+# automatically for a smaller `n` (see skip_if_not_slow()'s fast
+# counterparts below), so a fast test needs no separate tolerance
+# constant -- only a smaller `n` passed through consistently to both the
+# simulation and this function.
+binom_tol <- function(p, n, z = 4) {
+    z * sqrt(p * (1 - p) / n)
+}
+
+# ---------------------------------------------------------------------
+# Fast/slow test split (interlude session, reports/07_test_runbook.md).
+#
+# The 2000-subject boundary-guard runs, the 3000-subject analytical/
+# cross-method checks, and the R1 Weibull shape sweep are what make a
+# targeted `sim-tte-ode` test run slow (measured: the four heaviest
+# Weibull analytical/cross-method tests alone total ~20s of a ~37s
+# sim-tte-ode-only run). Each such test is gated behind
+# skip_if_not_slow() and paired with a smaller-n/coarser-grid
+# counterpart (weaker tolerance via the same binom_tol() formula, same
+# assertion shape) that always runs, so `devtools::test()`'s default
+# invocation still exercises every code path -- only the *scale* differs.
+#
+# `R CMD check`/CI runs the slow set (SIMTTE_SLOW_TESTS=true is set by
+# `dev/run-tests.R --check` and the Makefile's `check` target), so
+# nothing is lost at check time; only interactive/targeted runs default
+# to fast.
+skip_if_not_slow <- function() {
+    if (!identical(Sys.getenv("SIMTTE_SLOW_TESTS"), "true")) {
+        testthat::skip("slow test (set SIMTTE_SLOW_TESTS=true to run; see reports/07_test_runbook.md)")
+    }
+}
+
+# ---------------------------------------------------------------------
+# Phase 2.5 (reports/04_author_decisions.md "After the test runbook /
+# Phase 2.5"): grid-free in-solver refinement. Shared, parameterized
+# over `model`/`param` like the fixtures above, rather than copied into
+# each of test-sim-tte-ode-{weibull,gompertz}.R.
+# ---------------------------------------------------------------------
+
+# Every refined event time must lie within its own subject's
+# [T_PRE, TEVT] bracket (the interval .refine_ode_event_time_insolver()
+# interpolates within) -- a direct structural check, independent of
+# analytical accuracy. Cheap (small n); not one of the three gated
+# categories (boundary guard / analytical-cross-method / R1 sweep), so
+# always runs.
+check_ode_bracket_containment <- function(model, param, n = 300,
+    end = 20, seed = 1, ...) {
+    sim <- sim_tte_ode(model = model, param = param, n = n, end = end,
+        delta = 2, keep_trajectory = TRUE, seed = seed, ...)
+    traj <- sim$trajectory
+    last <- traj[!duplicated(traj$ID, fromLast = TRUE), ]
+    last <- last[match(sim$events$ID, last$ID), ]
+    is_event <- sim$events$sim_status == 1L
+    testthat::expect_true(all(sim$events$sim_time[is_event] >=
+        last$T_PRE[is_event] - 1e-8))
+    testthat::expect_true(all(sim$events$sim_time[is_event] <=
+        last$TEVT[is_event] + 1e-8))
+}
+
+# The grid-free bracket does not depend on the reported output grid, so
+# a fixed-seed run's refined event times should barely move between a
+# coarse and a fine `delta` -- unlike the pre-Phase-2.5 reported-grid
+# method (reports/06_phase2_report.md section 4). `tol` is set per
+# caller from the corresponding accuracy scale measured in
+# inst/validation/10_ode_grid_free_refinement.R, not an arbitrary
+# constant.
+#
+# Event/censoring status itself is compared too, but only for a small
+# allowed mismatch rate, not required to match exactly: the raw TEVT
+# (which decides event-vs-censored) is itself a solver-quantized time
+# and, for a subject whose true event time sits within one internal
+# solver step of `end`, can fall on either side of the `end` boundary
+# depending on `delta` (mrgsolve/lsoda does not take an internal step
+# past the next requested output time) -- a real, pre-existing property
+# of the boundary rule, not a refinement defect, and not what this
+# check is targeting.
+check_ode_delta_independence <- function(model, param, n = 300, end = 20,
+    seed = 1, delta_coarse = 4, delta_fine = 0.25, tol,
+    max_mismatch_frac = 0.05, ...) {
+    sim_coarse <- sim_tte_ode(model = model, param = param, n = n,
+        end = end, delta = delta_coarse, seed = seed, ...)
+    sim_fine <- sim_tte_ode(model = model, param = param, n = n,
+        end = end, delta = delta_fine, seed = seed, ...)
+    ev <- sim_coarse$events
+    ev_fine <- sim_fine$events[match(ev$ID, sim_fine$events$ID), ]
+    n_events <- sum(ev$sim_status == 1L)
+    mismatch <- sum(ev$sim_status != ev_fine$sim_status)
+    testthat::expect_lt(mismatch, max(1, max_mismatch_frac * n_events))
+    both_event <- ev$sim_status == 1L & ev_fine$sim_status == 1L
+    diff <- abs(ev$sim_time[both_event] - ev_fine$sim_time[both_event])
+    testthat::expect_lt(max(diff), tol)
+}

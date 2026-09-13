@@ -70,6 +70,56 @@ result <- sim_tte_df(mrg_output, surv_var = "p11", id_var = "ID",
 head(result)
 ```
 
+## Event-Time Interpolation
+
+`sim_tte_df()` accepts an `event_time_method` argument. `"grid"` (the
+default, used above) resolves the event time as the first reported time
+at which survival falls to or below the sampled uniform draw. Setting
+`event_time_method = "log_survival"` instead refines a crossing that
+falls strictly between two reported points, by linearly interpolating
+cumulative hazard $H(t) = -\log S(t)$ between them and solving for the
+time at which $H(t)$ equals the target implied by the draw. Linear
+interpolation in $H$ is equivalent to assuming the hazard is constant
+between the two reported points surrounding the crossing (a
+piecewise-constant hazard over that interval) — it is model-agnostic and
+does not re-derive or re-fit whatever hazard actually generated the
+trajectory.
+
+Reusing the same mock trajectory, with the same seed so both calls draw
+identical uniform random variates per subject:
+
+```{r log-survival}
+set.seed(7)
+result_grid <- sim_tte_df(mrg_output, event_time_method = "grid")
+
+set.seed(7)
+result_interp <- sim_tte_df(mrg_output, event_time_method = "log_survival")
+
+# Event/censoring classification is identical for the same trajectory
+# and the same random draws -- interpolation only refines *where*
+# within an already-identified interval the event falls.
+identical(result_grid$sim_status, result_interp$sim_status)
+
+cbind(
+  ID           = result_grid$ID,
+  status       = result_grid$sim_status,
+  grid         = result_grid$sim_time,
+  log_survival = result_interp$sim_time
+)
+```
+
+The two methods agree exactly whenever the crossing already lands on a
+reported time (for example, a first-observation crossing, or a draw that
+exactly matches a reported survival value); `log_survival` reports a
+slightly different time only when the true crossing fell strictly between
+two reported points. For this M-spline-independent mock trajectory the
+hazard varies continuously between reported points, so `log_survival`
+here is an approximation whose accuracy improves as the reported `time`
+grid is refined, not an exact recovery of a continuous-time event root.
+For **simtte**'s built-in M-spline model, whose reported hazard is
+genuinely piecewise-constant between grid points, `log_survival` recovers
+the event time implied by that discretized hazard exactly.
+
 ## Multiple Treatment Arms
 
 You can simulate different treatment arms by specifying different
