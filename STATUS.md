@@ -33,11 +33,17 @@ picks a distribution parameter for a target censoring fraction. On top
 of that, `add_interval_censoring()` can map the (possibly
 right-censored) outcome onto a visit/assessment-time interval `(L, R]`
 -- `sim_time_left`/`sim_time_right` columns, ready for
-`survival::Surv(..., type = "interval2")`; `visit_schedule()` generates
-a schedule with fixed spacing and jitter. Dependent/informative
-censoring or a visit process (either depending on a subject's own
-simulated PK/PD state) is out of scope for now -- see
-`reports/16_censoring_design.md`/`reports/18_interval_censoring_design.md`.
+`survival::Surv(..., type = "interval2")` (an event with
+`sim_time_left == 0` is a left-censored observation, with no separate
+mechanism needed); `visit_schedule()` generates a schedule with fixed
+spacing and jitter, `thin_visits()` layers missed visits/dropout on top
+(non-informative), and `visit_schedule_informative()` layers a visit
+process that reacts to the simulated event time (informative by
+construction, documented loudly). A visit process depending on a
+subject's own simulated PK/PD state, and dependent/informative right
+censoring, are the remaining out-of-scope pieces -- see
+`reports/16_censoring_design.md`/`reports/18_interval_censoring_design.md`/
+`reports/20_visit_process_evaluation.md`.
 
 ## Public API
 
@@ -49,6 +55,8 @@ simulated PK/PD state) is out of scope for now -- see
 | `censoring_rate_for()` | Solve for a censoring-distribution parameter hitting a target censoring fraction |
 | `add_interval_censoring()` | Map a (possibly right-censored) outcome onto a visit-schedule interval |
 | `visit_schedule()` | Generate a per-subject visit schedule (fixed spacing + jitter) |
+| `thin_visits()` | Missed visits and assessment dropout on a schedule (non-informative) |
+| `visit_schedule_informative()` | A visit schedule that reacts to the simulated event time (informative) |
 | `sim_tte()` | Closed-form Weibull/M-spline simulation (original API) |
 | `sim_tte_df()` | Inverse-transform sampling on any custom trajectory |
 | `explore_pi_tq_surv()` | Survival-difference-at-a-quantile utility |
@@ -61,15 +69,15 @@ start here), `vignette("introduction")`, `vignette("advanced-usage")`
 ## How to run the tests
 
 ```
-Rscript dev/run-tests.R              # fast: ~35s
-Rscript dev/run-tests.R all --slow   # full: ~2m20s
-Rscript dev/run-tests.R --check --fast  # R CMD check --as-cran, slow tests off: ~1m25s
-Rscript dev/run-tests.R --check      # R CMD check --as-cran, slow tests on (pre-release): ~3min
+Rscript dev/run-tests.R              # fast: ~40s
+Rscript dev/run-tests.R all --slow   # full: ~2m35s
+Rscript dev/run-tests.R --check --fast  # R CMD check --as-cran, slow tests off: ~1m30s
+Rscript dev/run-tests.R --check      # R CMD check --as-cran, slow tests on (pre-release): ~4min
 ```
 
 See `reports/07_test_runbook.md` for targeted groups (one file/model at
 a time), what each test file covers, and a "how do I check X" table.
-Current counts: 786 pass / 0 fail / 43 skip (fast), 920 pass / 0 fail /
+Current counts: 1126 pass / 0 fail / 49 skip (fast), 1267 pass / 0 fail /
 0 skip (slow). `R CMD check`: `Status: OK` (0 errors, 0 warnings, 0
 notes).
 
@@ -121,13 +129,22 @@ narrative for each: what was tested, why, and what the numbers mean.
   depends on the particular uncensored run supplied to it, not a
   closed-form property of the model. Re-check the realized fraction on
   a larger cohort after drawing with the solved parameter.
-- **Interval censoring assumes a fixed visit schedule, known in
-  advance.** No missed visits, and no visit hazard depending on a
-  subject's own simulated state (a sicker subject visiting less often)
-  -- see `reports/18_interval_censoring_design.md` option C for the
-  design and cost estimate.
+- **A visit process depending on a subject's own simulated PK/PD state
+  ("C3") is not built.** `thin_visits()` (schedule-only) and
+  `visit_schedule_informative()` (reacts to the simulated event time)
+  cover the first two complexity levels evaluated; C3 needs
+  `keep_trajectory = TRUE` plus interpolation between reported times --
+  see `reports/20_visit_process_evaluation.md`.
+- **Delayed entry / left truncation is not built.** A subject observed
+  only from `entry > 0` onward, with those already past the event
+  before `entry` excluded from the risk set, needs a different analysis
+  dataset shape (`survival::Surv(start, stop, event)`) that nothing in
+  this package currently produces -- see
+  `reports/21_left_censoring_evaluation.md` for the design sketch
+  (`add_delayed_entry(events, entry)`) and the open `end`-vs-`entry`
+  alignment question a future implementation would need to resolve.
 
 ## Not started / open before a CRAN release
 
-- See `reports/19_phase6b_report.md` "Questions for the author" for the
+- See `reports/23_phase6c_report.md` "Questions for the author" for the
   specific open decisions and the release readiness assessment.

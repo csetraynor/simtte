@@ -46,6 +46,11 @@
 #'     conventions" in the design report for why this combination is
 #'     intentional, not an inconsistency).}
 #' }
+#' An event with \code{sim_time_left == 0} (an event before the first
+#' post-baseline visit) \strong{is} a left-censored observation -- the
+#' event is known to have occurred before \code{sim_time_right}, exact
+#' time unknown -- with no separate mechanism needed; see the vignette's
+#' "Left censoring" subsection for a worked example.
 #' \code{sim_time}/\code{sim_status}/\code{sim_reason} (if present) are
 #' returned unchanged -- this function only adds columns, so every
 #' existing consumer of those three keeps working. For
@@ -108,11 +113,19 @@ add_interval_censoring <- function(events, visits, id_var = "ID",
 #' trial simulation -- scheduled visits rarely land exactly on the
 #' nominal day). The baseline visit (\code{time = 0}) is never
 #' jittered, so the result always satisfies
-#' \code{add_interval_censoring()}'s "must start at 0" requirement;
-#' every other visit's jitter is clamped at \code{0} (never negative)
-#' and the result is re-sorted per subject, so a large \code{jitter}
-#' relative to \code{every} cannot silently reorder a subject's own
-#' visits.
+#' \code{add_interval_censoring()}'s "must start at 0" requirement.
+#'
+#' \code{jitter} is validated against \code{every} \emph{before} any
+#' draw is made: the maximum possible deviation (\code{jitter} for
+#' \code{"uniform"}, \code{jitter_trunc * jitter} for \code{"normal"})
+#' must be less than \code{every / 2}, which guarantees -- by
+#' construction, not by a post-hoc check -- that jittered visits can
+#' never cross order or collide (adjacent nominal visits are
+#' \code{every} apart; two deviations each smaller than half of that
+#' cannot close the gap) or go negative (the first non-baseline visit
+#' is at least \code{every / 2} above \code{0}). A \code{jitter}
+#' violating this bound is an error, naming the bound, rather than a
+#' silently reordered or clamped schedule.
 #'
 #' @param n Integer. Number of subjects; schedules are generated for
 #'   \code{ID = 1:n} (remap the \code{ID} column afterward if your
@@ -122,7 +135,22 @@ add_interval_censoring <- function(events, visits, id_var = "ID",
 #'   schedule is \code{seq(0, end, by = every)} before jitter).
 #' @param jitter Non-negative numeric scalar (default \code{0}, no
 #'   jitter). Each non-baseline visit is perturbed by an independent
-#'   \code{stats::runif(1, -jitter, jitter)} draw, clamped at \code{0}.
+#'   draw from \code{jitter_dist}: \code{jitter} is the draw's
+#'   half-width for \code{"uniform"} (\code{stats::runif(1, -jitter,
+#'   jitter)}) or its standard deviation for \code{"normal"}, which is
+#'   truncated at \code{+/- jitter_trunc * jitter} (see
+#'   \code{jitter_trunc}) and drawn via inverse-CDF
+#'   (\code{stats::qnorm()} on a \code{stats::runif()} restricted to the
+#'   truncated range) -- one uniform draw per visit either way, so both
+#'   distributions consume the seeded stream the same shape of way.
+#' @param jitter_dist \code{"uniform"} (default; unchanged behavior and
+#'   seeds from before this argument existed) or \code{"normal"}
+#'   (truncated, see \code{jitter_trunc}; its seeds changed when the
+#'   truncation/bound was added -- see \code{NEWS.md}).
+#' @param jitter_trunc Positive numeric scalar, default \code{2}. Only
+#'   used for \code{jitter_dist = "normal"}: the truncation half-width,
+#'   in standard deviations, of the truncated normal jitter draw.
+#'   Ignored for \code{"uniform"}.
 #' @param seed Optional integer. If supplied, \code{set.seed(seed)} is
 #'   called before any jitter is drawn. Leave \code{NULL} when calling
 #'   this from inside a larger already-seeded workflow (this is how
@@ -133,11 +161,17 @@ add_interval_censoring <- function(events, visits, id_var = "ID",
 #' @return A data frame with \code{ID}/\code{time} columns, one row per
 #'   subject per visit -- directly usable as
 #'   \code{\link{add_interval_censoring}}'s \code{visits} argument.
-#' @seealso \code{\link{add_interval_censoring}}.
+#' @seealso \code{\link{add_interval_censoring}}, \code{\link{thin_visits}}
+#'   and \code{\link{visit_schedule_informative}}, to layer missed
+#'   visits/dropout on top of the schedule this function returns.
 #' @export
 #' @examples
 #' visit_schedule(n = 5, every = 4, end = 20, jitter = 1, seed = 1)
-visit_schedule <- function(n, every, end, jitter = 0, seed = NULL) {
+#' visit_schedule(n = 5, every = 4, end = 20, jitter = 0.4,
+#'   jitter_dist = "normal", seed = 1)
+visit_schedule <- function(n, every, end, jitter = 0,
+    jitter_dist = c("uniform", "normal"), jitter_trunc = 2, seed = NULL) {
+    jitter_dist <- match.arg(jitter_dist)
     if (!is.numeric(n) || length(n) != 1L || !is.finite(n) || n < 1 ||
         n != round(n)) {
         stop("'n' must be a positive integer scalar.", call. = FALSE)
@@ -153,6 +187,22 @@ visit_schedule <- function(n, every, end, jitter = 0, seed = NULL) {
         stop("'jitter' must be a non-negative numeric scalar.",
             call. = FALSE)
     }
+    if (!.is_positive_scalar(jitter_trunc)) {
+        stop("'jitter_trunc' must be a positive numeric scalar.",
+            call. = FALSE)
+    }
+    if (jitter > 0) {
+        max_dev <- if (jitter_dist == "uniform") jitter else jitter_trunc * jitter
+        if (max_dev >= every / 2) {
+            stop("'jitter' (", jitter, ") is too large relative to ",
+                "'every' (", every, ") for jitter_dist = \"", jitter_dist,
+                "\": the maximum possible deviation (", max_dev, ") must ",
+                "be less than every / 2 (", every / 2, ") so that visits ",
+                "cannot cross order. Use a smaller 'jitter'",
+                if (jitter_dist == "normal") " or 'jitter_trunc'" else "",
+                ".", call. = FALSE)
+        }
+    }
     if (!is.null(seed)) {
         set.seed(seed)
     }
@@ -161,11 +211,300 @@ visit_schedule <- function(n, every, end, jitter = 0, seed = NULL) {
     rows <- lapply(seq_len(n), function(i) {
         t <- base_visits
         if (jitter > 0 && k > 1L) {
-            t[-1] <- pmax(0, t[-1] + stats::runif(k - 1L, -jitter, jitter))
-            t <- sort(unique(t))
+            draws <- if (jitter_dist == "uniform") {
+                stats::runif(k - 1L, -jitter, jitter)
+            } else {
+                # Truncated normal via inverse-CDF: one uniform draw per
+                # visit, restricted to the CDF range of [-jitter_trunc,
+                # jitter_trunc] standard deviations, then mapped through
+                # qnorm() -- deterministic given that single draw, which
+                # keeps seed stability the same shape as the uniform
+                # branch above (reports/23_phase6c_report.md).
+                lo <- stats::pnorm(-jitter_trunc)
+                hi <- stats::pnorm(jitter_trunc)
+                stats::qnorm(stats::runif(k - 1L, lo, hi), sd = jitter)
+            }
+            jittered <- t[-1] + draws
+            if (is.unsorted(jittered, strictly = TRUE) || any(jittered <= 0)) {
+                # Unreachable for either built-in distribution once the
+                # jitter/every bound above holds (see this function's
+                # details) -- an internal invariant, not a user-facing
+                # condition. If this ever fires, the bound check has a
+                # bug; it is not meant to be worked around by the caller.
+                stop("visit_schedule(): internal invariant violated -- ",
+                    "jittered visits were not strictly increasing and ",
+                    "positive despite passing the jitter/every bound ",
+                    "check. Please report this as a bug.", call. = FALSE)
+            }
+            t <- c(0, jittered)
         }
         data.frame(ID = i, time = t)
     })
+    dplyr::bind_rows(rows)
+}
+
+#' Thin a visit schedule with missed visits and dropout (C1)
+#'
+#' Layers schedule-only randomness on top of a fixed visit schedule --
+#' no simulated outcome is read, so this is the "safe", always-
+#' non-informative member of the visit-process generators
+#' (\code{reports/20_visit_process_evaluation.md} "C1"; contrast with
+#' \code{\link{visit_schedule_informative}}, which reads the simulated
+#' outcome by design). Each non-baseline visit is independently missed
+#' with probability \code{p_miss}; independently of that, each subject
+#' may also start dropping out: with probability \code{p_dropout}, one
+#' of their non-baseline visits is chosen uniformly at random as the
+#' dropout onset, and it and every later visit is dropped. The baseline
+#' visit (\code{time = 0}) is never dropped by either mechanism.
+#'
+#' @param schedule A per-subject schedule (a data frame with \code{ID}/
+#'   \code{time} columns, e.g. from \code{\link{visit_schedule}}), or a
+#'   common numeric vector -- in which case \code{ids} is required, and
+#'   the vector is expanded to one copy per ID first (via the same
+#'   internal validation \code{\link{add_interval_censoring}} itself
+#'   uses).
+#' @param p_miss,p_dropout Numeric scalars in \code{[0, 1]}, default
+#'   \code{0} (no thinning; \code{schedule} is returned as given). The
+#'   dropout-onset visit is drawn from the subject's \emph{original}
+#'   non-baseline visits, independently of any \code{p_miss} draws for
+#'   that subject.
+#' @param ids Required only when \code{schedule} is a numeric vector;
+#'   the subject IDs to expand it across (e.g. \code{events$ID}).
+#' @param seed Optional integer. If supplied, \code{set.seed(seed)} is
+#'   called before any draw. Leave \code{NULL} inside a larger
+#'   already-seeded workflow.
+#'
+#' @return A data frame with \code{ID}/\code{time} columns -- a
+#'   (possibly shorter, per subject) schedule directly usable as
+#'   \code{\link{add_interval_censoring}}'s \code{visits} argument. Must
+#'   be applied before \code{\link{add_interval_censoring}}, and
+#'   composes with \code{\link{add_censoring}} in either relative order
+#'   (they touch disjoint objects: this function only ever reads/writes
+#'   a visit schedule, never \code{events}).
+#' @seealso \code{\link{visit_schedule}}, \code{\link{visit_schedule_informative}}
+#'   (C2, the outcome-reactive counterpart), \code{\link{add_interval_censoring}}.
+#' @export
+#' @examples
+#' sched <- visit_schedule(n = 20, every = 4, end = 24, seed = 1)
+#' thinned <- thin_visits(sched, p_miss = 0.1, p_dropout = 0.05, seed = 2)
+#' nrow(thinned) <= nrow(sched)
+thin_visits <- function(schedule, p_miss = 0, p_dropout = 0, ids = NULL,
+    seed = NULL) {
+    if (!.is_probability_scalar(p_miss)) {
+        stop("'p_miss' must be a numeric scalar in [0, 1].", call. = FALSE)
+    }
+    if (!.is_probability_scalar(p_dropout)) {
+        stop("'p_dropout' must be a numeric scalar in [0, 1].", call. = FALSE)
+    }
+    if (is.numeric(schedule)) {
+        if (is.null(ids)) {
+            stop("'ids' is required when 'schedule' is a numeric vector ",
+                "(the common schedule is expanded per subject); see ",
+                "?thin_visits.", call. = FALSE)
+        }
+        sched_list <- .normalize_visit_schedule(schedule, ids)
+        schedule <- dplyr::bind_rows(lapply(seq_along(ids), function(i) {
+            data.frame(ID = ids[i], time = sched_list[[as.character(ids[i])]])
+        }))
+    } else if (!is.data.frame(schedule) ||
+        !all(c("ID", "time") %in% names(schedule))) {
+        stop("'schedule' must be a numeric vector (a common schedule, ",
+            "with 'ids') or a data frame with 'ID'/'time' columns (a ",
+            "per-subject schedule).", call. = FALSE)
+    }
+    if (p_miss == 0 && p_dropout == 0) {
+        return(schedule)
+    }
+    if (!is.null(seed)) {
+        set.seed(seed)
+    }
+    subj_ids <- unique(schedule$ID)
+    rows <- lapply(subj_ids, function(id) {
+        v <- schedule$time[schedule$ID == id]
+        .validate_visit_vector(v)
+        non_baseline <- seq_along(v)[-1]
+        keep <- rep(TRUE, length(v))
+        if (length(non_baseline)) {
+            if (p_miss > 0) {
+                miss <- stats::runif(length(non_baseline)) < p_miss
+                keep[non_baseline[miss]] <- FALSE
+            }
+            if (p_dropout > 0 && stats::runif(1) < p_dropout) {
+                onset_pos <- floor(stats::runif(1) * length(non_baseline)) + 1L
+                onset <- non_baseline[onset_pos]
+                keep[non_baseline[non_baseline >= onset]] <- FALSE
+            }
+        }
+        data.frame(ID = id, time = v[keep])
+    })
+    dplyr::bind_rows(rows)
+}
+
+#' Generate an outcome-informative visit schedule (C2)
+#'
+#' Layers visit-process randomness that \strong{reacts to the simulated
+#' event time} on top of a fixed visit schedule
+#' (\code{reports/20_visit_process_evaluation.md} "C2"): a scheduled
+#' visit shortly before a subject's event may be missed at an elevated
+#' rate (\code{miss_near_event}, e.g. "too unwell to attend"), and/or an
+#' unscheduled extra visit may be added shortly after it
+#' (\code{extra_visit_after_event}, e.g. "brought in for follow-up after
+#' a reported symptom"). Both are optional and independent of each
+#' other; supplying neither is equivalent to \code{\link{thin_visits}}
+#' with \code{p_miss = p_miss_base}.
+#'
+#' @section Informative assessment:
+#' \strong{This function's output is not a neutral assessment schedule.}
+#' By construction, whether/when a subject is assessed now depends on
+#' whether/when they had the simulated event -- exactly the situation
+#' most interval-censored analyses (Turnbull NPMLE, standard parametric
+#' interval-censored likelihoods) assume does \emph{not} hold when they
+#' treat assessment times as ignorable. Using this function's schedule
+#' is appropriate for \emph{studying} that bias (e.g. comparing a fit
+#' against \code{\link{thin_visits}}'s non-informative schedule at the
+#' same nominal miss rate, as the vignette's "Interval censoring"
+#' section does), not as a drop-in, general-purpose visit generator. A
+#' \code{message()} naming this is emitted on every call.
+#'
+#' @param schedule A per-subject schedule (data frame with \code{ID}/
+#'   \code{time}), or a common numeric vector (expanded per subject
+#'   using \code{events[[id_var]]} -- no separate \code{ids} argument
+#'   needed here, unlike \code{\link{thin_visits}}, since \code{events}
+#'   already supplies the ID list).
+#' @param events Data frame with (by default) \code{ID}, \code{sim_time},
+#'   \code{sim_status} columns, \strong{after} any \code{\link{add_censoring}}
+#'   call (see "Pipeline position" below) -- column names configurable
+#'   via \code{id_var}/\code{time_var}/\code{status_var}.
+#' @param end Numeric scalar. An unscheduled extra visit
+#'   (\code{extra_visit_after_event}) landing after \code{end} is
+#'   dropped, not added -- the same administrative horizon
+#'   \code{\link{add_censoring}} uses.
+#' @param miss_near_event \code{NULL} (default, no effect), or
+#'   \code{list(window = <positive scalar>, p = <scalar in [0, 1]>)}.
+#'   For an event subject (\code{sim_status == 1}), a scheduled visit
+#'   \code{v} with \code{t - window <= v < t} (\code{t} the event time)
+#'   is missed with probability \code{p} instead of \code{p_miss_base}.
+#'   Has no effect on a censored subject, or on a visit outside the
+#'   window.
+#' @param extra_visit_after_event \code{NULL} (default, no effect), or a
+#'   distribution spec in \code{\link{add_censoring}}'s \code{censoring}
+#'   shape (\code{list(dist = "exponential", rate = ...)},
+#'   \code{"weibull"}, \code{"uniform"}, \code{"lognormal"},
+#'   \code{"gamma"}, or \code{"user"}). For an event subject only, one
+#'   delay is drawn and an unscheduled visit is added at
+#'   \code{sim_time + delay}, unless that would exceed \code{end}.
+#' @param p_miss_base Numeric scalar in \code{[0, 1]}, default \code{0}.
+#'   Background miss probability applied to every non-baseline visit not
+#'   otherwise covered by \code{miss_near_event} (i.e. every visit for a
+#'   censored subject, and every out-of-window visit for an event
+#'   subject) -- the same mechanism as \code{\link{thin_visits}}'s
+#'   \code{p_miss}, folded in here so a caller does not need to chain
+#'   both functions just to add a uniform background miss rate on top of
+#'   the near-event effect.
+#' @param id_var,time_var,status_var Character scalars naming the
+#'   subject-ID, event/censoring-time, and status columns of
+#'   \code{events}. Default \code{"ID"}/\code{"sim_time"}/\code{"sim_status"}.
+#' @param seed Optional integer. If supplied, \code{set.seed(seed)} is
+#'   called before any draw.
+#'
+#' @return A data frame with \code{ID}/\code{time} columns -- directly
+#'   usable as \code{\link{add_interval_censoring}}'s \code{visits}
+#'   argument.
+#'
+#' @section Pipeline position:
+#' \code{events} should already reflect any independent right
+#' censoring: exact simulation -> \code{\link{add_censoring}} ->
+#' \code{visit_schedule_informative()} -> \code{\link{add_interval_censoring}}.
+#' Generating the schedule from pre-censoring event times would make the
+#' near-event/extra-visit mechanics react to a \code{sim_time} that the
+#' final \code{events} no longer has -- the same ordering reasoning as
+#' \code{\link{add_interval_censoring}}'s own "Ordering with right
+#' censoring" section.
+#'
+#' @seealso \code{\link{thin_visits}} (C1, the non-informative
+#'   counterpart), \code{\link{add_interval_censoring}}.
+#' @export
+#' @examples
+#' \donttest{
+#' sim <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+#'   n = 50, end = 24, delta = 2, seed = 1)
+#' sched <- visit_schedule(n = 50, every = 4, end = 24, seed = 1)
+#' realized <- visit_schedule_informative(sched, sim$events, end = 24,
+#'   miss_near_event = list(window = 3, p = 0.5), seed = 2)
+#' out <- add_interval_censoring(sim$events, visits = realized)
+#' head(out)
+#' }
+visit_schedule_informative <- function(schedule, events, end,
+    miss_near_event = NULL, extra_visit_after_event = NULL,
+    p_miss_base = 0, id_var = "ID", time_var = "sim_time",
+    status_var = "sim_status", seed = NULL) {
+    events <- .validate_events_columns(events, id_var, time_var, status_var)
+    if (!.is_finite_scalar(end) || end < 0) {
+        stop("'end' must be a non-negative finite numeric scalar.",
+            call. = FALSE)
+    }
+    if (!.is_probability_scalar(p_miss_base)) {
+        stop("'p_miss_base' must be a numeric scalar in [0, 1].",
+            call. = FALSE)
+    }
+    if (!is.null(miss_near_event)) {
+        if (!is.list(miss_near_event) || is.null(miss_near_event$window) ||
+            is.null(miss_near_event$p)) {
+            stop("'miss_near_event' must be a list with 'window' and 'p' ",
+                "elements; see ?visit_schedule_informative.", call. = FALSE)
+        }
+        if (!.is_positive_scalar(miss_near_event$window)) {
+            stop("'miss_near_event$window' must be a positive numeric ",
+                "scalar.", call. = FALSE)
+        }
+        if (!.is_probability_scalar(miss_near_event$p)) {
+            stop("'miss_near_event$p' must be a numeric scalar in [0, 1].",
+                call. = FALSE)
+        }
+    }
+
+    ids <- events[[id_var]]
+    sched <- .normalize_visit_schedule(schedule, ids)
+
+    if (!is.null(seed)) {
+        set.seed(seed)
+    }
+
+    times <- events[[time_var]]
+    statuses <- events[[status_var]]
+    rows <- mapply(function(id, t, s) {
+        v <- sched[[as.character(id)]]
+        keep <- rep(TRUE, length(v))
+        non_baseline <- seq_along(v)[-1]
+        if (length(non_baseline)) {
+            p_eff <- rep(p_miss_base, length(non_baseline))
+            if (isTRUE(s == 1L) && !is.null(miss_near_event)) {
+                w <- miss_near_event$window
+                in_window <- v[non_baseline] < t & v[non_baseline] >= (t - w)
+                p_eff[in_window] <- miss_near_event$p
+            }
+            if (any(p_eff > 0)) {
+                miss <- stats::runif(length(non_baseline)) < p_eff
+                keep[non_baseline[miss]] <- FALSE
+            }
+        }
+        v_kept <- v[keep]
+        if (isTRUE(s == 1L) && !is.null(extra_visit_after_event)) {
+            delay <- .draw_censoring_times(extra_visit_after_event, 1)
+            extra_time <- t + delay
+            if (extra_time <= end) {
+                v_kept <- sort(unique(c(v_kept, extra_time)))
+            }
+        }
+        data.frame(ID = id, time = v_kept)
+    }, ids, times, statuses, SIMPLIFY = FALSE)
+
+    message("visit_schedule_informative(): the returned schedule depends ",
+        "on the simulated event times; interval-censored analyses ",
+        "assuming non-informative assessment times will be biased by ",
+        "design (see ?visit_schedule_informative \"Informative ",
+        "assessment\").")
+
     dplyr::bind_rows(rows)
 }
 

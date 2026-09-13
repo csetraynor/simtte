@@ -51,6 +51,11 @@ subject-ID, event/censoring-time, and status columns of
     conventions" in the design report for why this combination is
     intentional, not an inconsistency).}
 }
+An event with \code{sim_time_left == 0} (an event before the first
+post-baseline visit) \strong{is} a left-censored observation -- the
+event is known to have occurred before \code{sim_time_right}, exact
+time unknown -- with no separate mechanism needed; see the vignette's
+"Left censoring" subsection for a worked example.
 \code{sim_time}/\code{sim_status}/\code{sim_reason} (if present) are
 returned unchanged -- this function only adds columns, so every
 existing consumer of those three keeps working. For
