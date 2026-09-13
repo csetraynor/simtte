@@ -375,9 +375,12 @@ head(sim_jittered$events[, c("sim_time", "sim_status", "sim_time_left",
 For a nonparametric interval-censored survival fit, convert
 `sim_time_right`'s `Inf` to `NA` (the `survival` package's own
 convention for an open upper bound) and hand both bounds to
-`survival::Surv(..., type = "interval2")`:
+`survival::Surv(..., type = "interval2")` -- this and the "Informative
+assessment schedules" chunk below are the only places in this vignette
+that need the optional `survival` package (`Suggests`, not `Imports`);
+both are skipped if it is not installed:
 
-```{r interval-survfit}
+```{r interval-survfit, eval = requireNamespace("survival", quietly = TRUE)}
 right_for_surv <- ifelse(is.infinite(interval$sim_time_right), NA,
   interval$sim_time_right)
 fit <- survival::survfit(survival::Surv(time = sim_time_left,
@@ -470,7 +473,7 @@ most interval-censored analyses (including the Turnbull fit above) make
 about assessment timing. Use it to *study* that bias, not as a general
 visit generator:
 
-```{r informative-bias, message = FALSE}
+```{r informative-bias, message = FALSE, eval = requireNamespace("survival", quietly = TRUE)}
 rate <- 0.08
 sim_small <- sim_tte_ode(model = "exponential", param = list(H0 = rate),
   n = 800, end = 24, delta = 2, seed = 1)
@@ -500,10 +503,13 @@ data.frame(time = visit_times,
 ```
 
 At the same *nominal* miss rate (0.3 for C1's uniform miss; 0.1
-background + 0.9 near an event for C2), C2's estimate strays further
-from the analytical curve than C1's -- missing visits specifically
-*because* a subject is about to have the event pulls the estimated
-survival away from the truth in a way a uniform miss rate does not. A
+background + 0.9 near an event for C2 -- additive, not overriding: a
+near-window visit for an event subject is missed with probability
+`1 - (1 - p_miss_base) * (1 - p)`, so the two mechanisms compete rather
+than one replacing the other), C2's estimate strays further from the
+analytical curve than C1's -- missing visits specifically *because* a
+subject is about to have the event pulls the estimated survival away
+from the truth in a way a uniform miss rate does not. A
 third generator, reacting to a subject's own PK/PD trajectory rather
 than the exact event time, was evaluated and deferred
 (`reports/20_visit_process_evaluation.md`, "C3") -- it needs

@@ -159,8 +159,9 @@ tte_model <- function(model, hazard, params = list(), name = NULL,
     if (has_omega && !is.null(bsv_targets)) {
         message("tte_model(): 'model' already declares a $OMEGA block; ",
             "'bsv_targets' is ignored and sim_tte_ode()'s 'omega' will ",
-            "be applied via mrgsolve::omat() instead (see ",
-            "reports/11_bsv_review.md section 4).")
+            "be applied via mrgsolve::omat() instead (see ?sim_tte_ode ",
+            "\"Between-subject variability\", \"Coexistence with a ",
+            "user-supplied model\").")
     }
 
     structure(list(code = new_code, mod = mod, hazard = hazard,

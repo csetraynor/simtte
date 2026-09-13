@@ -65,6 +65,24 @@ optional per-subject jitter. \code{\link{sim_tte_ode}} also accepts a
 any \code{censoring}.
 }
 
+\section{Full \pkg{mrgsolve} import}{
+
+Not narrowed to \code{importFrom()}: \pkg{mrgsolve} defines several
+of its own methods on base generics (\code{as.data.frame},
+\code{as.matrix}, ...) via S4 \code{setMethod()}/\code{exportMethods()},
+not plain S3 registration (confirmed directly: \code{mrgsims} is an
+S4 class, and \code{as.data.frame.mrgsims} is not found by
+\code{.S3methods()} even once \pkg{mrgsolve}'s namespace is loaded).
+Narrowing this to \code{importFrom(mrgsolve, mread, mrgsim, ...)} was
+tried and broke \code{as.data.frame(mrgsim(...))} dispatch under
+\code{devtools::load_all()} (\code{.sim_surv_df()}'s own
+\code{as.data.frame(out)} call, used by every \code{sim_tte()}/
+\code{sim_tte_df()} call) -- a full \code{import()} is what makes a
+dependency's S4 methods on base generics reliably dispatchable from
+the importing package's own code, not just its exported function
+names, so it is kept (Phase 5b, `reports/15_phase5b_report.md`).
+}
+
 \references{
 Bender R, Augustin T, Blettner M (2005). Generating survival times to
 simulate Cox proportional hazards models. \emph{Statistics in

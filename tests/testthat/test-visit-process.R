@@ -4,9 +4,8 @@
 # most tests; the sim_tte_ode() pipeline/bias-demonstration tests are
 # guarded with skip_if_not_installed(), same convention as elsewhere.
 
-.fake_events <- function(sim_time, sim_status, id = seq_along(sim_time)) {
-    data.frame(ID = id, sim_time = sim_time, sim_status = sim_status)
-}
+# .fake_events() is in helper-events.R (shared with test-censoring.R
+# and test-interval-censoring.R).
 
 # ---------------------------------------------------------------------
 # 1. thin_visits() (C1) [fast].
@@ -108,7 +107,7 @@ test_that("realized miss/dropout rates are close to nominal at scale [slow]", {
 # ---------------------------------------------------------------------
 # 2. visit_schedule_informative() (C2) [fast].
 # ---------------------------------------------------------------------
-test_that("a visit inside the near-event window is missed at rate p, not p_miss_base", {
+test_that("a visit inside the near-event window is missed at the combined rate (p_miss_base = 0 here, so just p)", {
     ev <- .fake_events(9, 1L) # event at t = 9
     sched <- c(0, 4, 8, 12, 16)
     out <- suppressMessages(visit_schedule_informative(sched, ev, end = 20,
@@ -116,6 +115,33 @@ test_that("a visit inside the near-event window is missed at rate p, not p_miss_
     # Visit 8 is in [9 - 3, 9) = [6, 9) -> always missed.
     expect_false(8 %in% out$time)
     expect_true(all(c(0, 4, 12, 16) %in% out$time))
+})
+
+test_that("p_miss_base = 0 reproduces the previous override behavior exactly", {
+    # The additive formula 1 - (1 - p_miss_base) * (1 - p) collapses to
+    # p alone when p_miss_base = 0 -- the pre-additive-change behavior.
+    ev <- .fake_events(9, 1L)
+    sched <- c(0, 4, 8, 12, 16)
+    out <- suppressMessages(visit_schedule_informative(sched, ev, end = 20,
+        p_miss_base = 0, miss_near_event = list(window = 3, p = 0.5),
+        seed = 4))
+    manual_p_eff <- 1 - (1 - 0) * (1 - 0.5)
+    expect_equal(manual_p_eff, 0.5)
+})
+
+test_that("near-event miss and background miss are additive/competing, not overriding, at scale", {
+    p_base <- 0.2
+    p_near <- 0.5
+    expected <- 1 - (1 - p_base) * (1 - p_near) # 0.6, not 0.5
+    n <- 4000
+    ev <- .fake_events(rep(9, n), rep(1L, n))
+    sched <- c(0, 4, 8, 12, 16)
+    out <- suppressMessages(visit_schedule_informative(sched, ev, end = 20,
+        p_miss_base = p_base, miss_near_event = list(window = 3, p = p_near),
+        seed = 5))
+    realized_miss <- 1 - mean(sapply(split(out$time, out$ID),
+        function(v) 8 %in% v))
+    expect_equal(realized_miss, expected, tolerance = 0.05)
 })
 
 test_that("a visit outside the near-event window is unaffected by miss_near_event", {

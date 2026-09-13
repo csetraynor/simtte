@@ -70,14 +70,14 @@ start here), `vignette("introduction")`, `vignette("advanced-usage")`
 
 ```
 Rscript dev/run-tests.R              # fast: ~40s
-Rscript dev/run-tests.R all --slow   # full: ~2m35s
-Rscript dev/run-tests.R --check --fast  # R CMD check --as-cran, slow tests off: ~1m30s
-Rscript dev/run-tests.R --check      # R CMD check --as-cran, slow tests on (pre-release): ~4min
+Rscript dev/run-tests.R all --slow   # full: ~2m50s
+Rscript dev/run-tests.R --check --fast  # R CMD check --as-cran, slow tests off: ~1m40s
+Rscript dev/run-tests.R --check      # R CMD check --as-cran, slow tests on (pre-release): ~3m40s
 ```
 
 See `reports/07_test_runbook.md` for targeted groups (one file/model at
 a time), what each test file covers, and a "how do I check X" table.
-Current counts: 1126 pass / 0 fail / 49 skip (fast), 1267 pass / 0 fail /
+Current counts: 1249 pass / 0 fail / 49 skip (fast), 1390 pass / 0 fail /
 0 skip (slow). `R CMD check`: `Status: OK` (0 errors, 0 warnings, 0
 notes).
 
@@ -146,5 +146,10 @@ narrative for each: what was tested, why, and what the numbers mean.
 
 ## Not started / open before a CRAN release
 
-- See `reports/23_phase6c_report.md` "Questions for the author" for the
-  specific open decisions and the release readiness assessment.
+- C3 (a visit process depending on a subject's own simulated PK/PD
+  state) and delayed entry / left truncation (`add_delayed_entry()`)
+  are both deferred to a later version -- not scheduled for this
+  release.
+- See `reports/24_pre_phase7_review.md` "Questions for the author" for
+  the proposed-but-not-applied naming decisions and the Phase 7
+  readiness assessment.
