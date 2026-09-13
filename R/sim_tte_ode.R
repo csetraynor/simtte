@@ -13,6 +13,14 @@
 #' \code{reports/02_technical_design.md} section 1 for why the two are
 #' separate code paths, not two modes of one function.
 #'
+#' The sections below follow one reading order: the mechanism itself
+#' ("Boundary guard", "Event-time refinement"), then what varies by
+#' \code{model} ("Weibull shape support", "M-spline knot-count
+#' variants", "PK/PD-linked hazard models"), then the cross-cutting
+#' inputs any model can take ("Time-varying covariates", "Between-
+#' subject variability", "Right censoring", "Interval censoring"), and
+#' finally "Reproducibility", which ties every draw above together.
+#'
 #' \code{model \%in\% c("exponential", "weibull", "gompertz")} are
 #' implemented as of Phase 2; \code{model = "mspline"} as of Phase 3 (see
 #' "M-spline knot-count variants" below); the six PK/PD-linked models
@@ -245,26 +253,6 @@
 #' regime, not a separate guardrail (Phase 2.5's own fallback message
 #' already covers it).
 #'
-#' @section Time-varying covariates:
-#' \code{covariates}/\code{beta} generalize \code{sim_tte()}'s
-#' single-covariate \code{lp_data} mechanism
-#' (\code{PHASE_F_DESIGN_REPORT.md}/\code{PHASE_G_REPORT.md}) to an
-#' arbitrary named set: \eqn{lp(t) = \sum_k \beta_k X_k(t)}, computed in
-#' R and supplied to the model as an ordinary time-varying \code{lp}
-#' covariate (last-observation-carried-forward, the same convention
-#' \code{sim_tte()} already uses) -- no library model file needs to
-#' change to support this, since every one of them already recomputes
-#' \code{eta = exp(mu + lp)} inside \code{$ODE} (Phase 1). Coverage
-#' follows the same rule as \code{sim_tte()}'s Weibull \code{lp_data}
-#' path: every subject's \code{covariates} must include an observation
-#' at \code{time = 0}; the last known value is carried forward for any
-#' remaining follow-up (no M-spline-style "must reach \code{end}"
-#' requirement, since these are genuine ODE models, not a
-#' piecewise-constant-on-a-fixed-grid closed form). \strong{Limitation}:
-#' when \code{covariates} has an \code{ID} column, it must equal
-#' \code{1:nrow(idata)} exactly -- subject-specific covariates for a
-#' non-default (non-\code{1:n}) subject numbering are not yet supported.
-#'
 #' @section Weibull shape support:
 #' The closed-form \code{\link{sim_tte}}'s Weibull model has no
 #' restriction on \code{shape} (an exact analytical expression is
@@ -384,6 +372,70 @@
 #' it means the parameters are too extreme for the requested tolerance;
 #' try tighter \code{rtol}/\code{atol} or a smaller dose.
 #'
+#' @section Time-varying covariates:
+#' \code{covariates}/\code{beta} generalize \code{sim_tte()}'s
+#' single-covariate \code{lp_data} mechanism
+#' (\code{PHASE_F_DESIGN_REPORT.md}/\code{PHASE_G_REPORT.md}) to an
+#' arbitrary named set: \eqn{lp(t) = \sum_k \beta_k X_k(t)}, computed in
+#' R and supplied to the model as an ordinary time-varying \code{lp}
+#' covariate (last-observation-carried-forward, the same convention
+#' \code{sim_tte()} already uses) -- no library model file needs to
+#' change to support this, since every one of them already recomputes
+#' \code{eta = exp(mu + lp)} inside \code{$ODE} (Phase 1). Coverage
+#' follows the same rule as \code{sim_tte()}'s Weibull \code{lp_data}
+#' path: every subject's \code{covariates} must include an observation
+#' at \code{time = 0}; the last known value is carried forward for any
+#' remaining follow-up (no M-spline-style "must reach \code{end}"
+#' requirement, since these are genuine ODE models, not a
+#' piecewise-constant-on-a-fixed-grid closed form). \strong{Limitation}:
+#' when \code{covariates} has an \code{ID} column, it must equal
+#' \code{1:nrow(idata)} exactly -- subject-specific covariates for a
+#' non-default (non-\code{1:n}) subject numbering are not yet supported.
+#'
+#' @section Between-subject variability:
+#' \code{omega} adds between-subject variability (BSV) to the
+#' \strong{structural PK/PD parameters} of the six models above (not
+#' to \code{H0}/\code{lp}/\code{beta_*}, the hazard-scale parameters
+#' this package's own scaffold adds): a log-normal draw,
+#' \eqn{\theta_i = \theta_{pop} \cdot \exp(\eta_i)}, computed in R with
+#' \code{\link[mrgsolve]{mvgauss}} and supplied as ordinary \code{idata}
+#' columns -- exactly the mechanism already used for \code{U}
+#' (\code{reports/11_bsv_review.md} option (b); no model file needs a
+#' declared \code{$OMEGA} block for this to work). The valid targets
+#' are every structural parameter of the model's own \pkg{mrgsolve}
+#' backbone (see each \code{*_hazard.cpp} file's own \code{[PROB]}
+#' block for the exact list, e.g. \code{pk_hazard}: \code{CL}, \code{V2},
+#' \code{Q}, \code{V3}, \code{KA}, \code{KA2}, \code{VMAX}, \code{KM}).
+#'
+#' \code{omega} may be \strong{named} (matching \code{dimnames}, any
+#' subset of the model's targets, any order -- e.g. BSV on \code{CL}
+#' only) or \strong{unnamed} (dimension must equal the full target list,
+#' applied positionally in the order documented for that model). Population
+#' values come from the \emph{resolved} parameters (\code{param}
+#' overrides applied first), so \code{param = list(CL = 3)} together
+#' with \code{omega} on \code{"CL"} centers the draw on 3. Supplying
+#' both an \code{idata} column and an \code{omega} target with the same
+#' name is an error (no silent override in either direction).
+#'
+#' \strong{Coexistence with a user-supplied model} (a compiled
+#' \code{mrgmod} with its own \code{$OMEGA}/\code{ETA()} wiring, Phase 5):
+#' \code{omega} is dispatched on whether the resolved model already
+#' declares a matching block. A model that does (any hand-written
+#' model using the standard \code{TVCL}/\code{ETA()} idiom) goes
+#' through \code{\link[mrgsolve]{omat}} exactly as before -- unaffected
+#' by this mechanism. Only a model with \strong{no} declared block
+#' falls through to the \code{idata} route, and only if it is one of
+#' the named models above; \code{omega} on any other model (the
+#' closed-form-style library models, or a user model with neither)
+#' keeps the existing informative error naming the missing
+#' \code{$OMEGA} block.
+#'
+#' \code{sigma} is unaffected by any of this and stays exactly what it
+#' was: forwarded to \code{\link[mrgsolve]{smat}}, usable only for a
+#' model (necessarily user-supplied, for now) that already declares a
+#' \code{$SIGMA} block -- no built-in library model's hazard depends on
+#' a residual-error-perturbed quantity.
+#'
 #' @section Right censoring:
 #' \code{$events} always carries \code{sim_reason}, distinguishing
 #' \code{"event"} from administrative censoring at \code{end}
@@ -432,50 +484,6 @@
 #' \code{\link{add_interval_censoring}} directly rather than through
 #' this function's \code{visits} argument a second time.
 #'
-#' @section Between-subject variability:
-#' \code{omega} adds between-subject variability (BSV) to the
-#' \strong{structural PK/PD parameters} of the six models above (not
-#' to \code{H0}/\code{lp}/\code{beta_*}, the hazard-scale parameters
-#' this package's own scaffold adds): a log-normal draw,
-#' \eqn{\theta_i = \theta_{pop} \cdot \exp(\eta_i)}, computed in R with
-#' \code{\link[mrgsolve]{mvgauss}} and supplied as ordinary \code{idata}
-#' columns -- exactly the mechanism already used for \code{U}
-#' (\code{reports/11_bsv_review.md} option (b); no model file needs a
-#' declared \code{$OMEGA} block for this to work). The valid targets
-#' are every structural parameter of the model's own \pkg{mrgsolve}
-#' backbone (see each \code{*_hazard.cpp} file's own \code{[PROB]}
-#' block for the exact list, e.g. \code{pk_hazard}: \code{CL}, \code{V2},
-#' \code{Q}, \code{V3}, \code{KA}, \code{KA2}, \code{VMAX}, \code{KM}).
-#'
-#' \code{omega} may be \strong{named} (matching \code{dimnames}, any
-#' subset of the model's targets, any order -- e.g. BSV on \code{CL}
-#' only) or \strong{unnamed} (dimension must equal the full target list,
-#' applied positionally in the order documented for that model). Population
-#' values come from the \emph{resolved} parameters (\code{param}
-#' overrides applied first), so \code{param = list(CL = 3)} together
-#' with \code{omega} on \code{"CL"} centers the draw on 3. Supplying
-#' both an \code{idata} column and an \code{omega} target with the same
-#' name is an error (no silent override in either direction).
-#'
-#' \strong{Coexistence with a user-supplied model} (a compiled
-#' \code{mrgmod} with its own \code{$OMEGA}/\code{ETA()} wiring, Phase 5):
-#' \code{omega} is dispatched on whether the resolved model already
-#' declares a matching block. A model that does (any hand-written
-#' model using the standard \code{TVCL}/\code{ETA()} idiom) goes
-#' through \code{\link[mrgsolve]{omat}} exactly as before -- unaffected
-#' by this mechanism. Only a model with \strong{no} declared block
-#' falls through to the \code{idata} route, and only if it is one of
-#' the named models above; \code{omega} on any other model (the
-#' closed-form-style library models, or a user model with neither)
-#' keeps the existing informative error naming the missing
-#' \code{$OMEGA} block.
-#'
-#' \code{sigma} is unaffected by any of this and stays exactly what it
-#' was: forwarded to \code{\link[mrgsolve]{smat}}, usable only for a
-#' model (necessarily user-supplied, for now) that already declares a
-#' \code{$SIGMA} block -- no built-in library model's hazard depends on
-#' a residual-error-perturbed quantity.
-#'
 #' @section Reproducibility:
 #' If \code{idata} does not supply \code{U}, exactly one
 #' \code{stats::runif(1)} is drawn per row of \code{idata} (one row per
@@ -521,8 +529,7 @@ sim_tte_ode <- function(model, param = list(), omega = NULL, sigma = NULL,
                 "?sim_tte_ode) or a simtte_model produced by ",
                 "tte_model(); a bare compiled mrgsolve model is not ",
                 "accepted directly -- convert it first with tte_model() ",
-                "(reports/13_converter_design.md section 5).",
-                call. = FALSE)
+                "(see ?tte_model).", call. = FALSE)
         }
         model <- match.arg(model, choices = c(names(.ODE_LIBRARY_FILES), "mspline"))
     }

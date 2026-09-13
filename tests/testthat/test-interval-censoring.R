@@ -6,9 +6,8 @@
 # mrgsolve and are guarded with skip_if_not_installed(), same
 # convention as every other ODE test file.
 
-.fake_events <- function(sim_time, sim_status, id = seq_along(sim_time)) {
-    data.frame(ID = id, sim_time = sim_time, sim_status = sim_status)
-}
+# .fake_events() is in helper-events.R (shared with test-censoring.R
+# and test-visit-process.R).
 
 # ---------------------------------------------------------------------
 # 1. Interval conventions, one row each [fast].

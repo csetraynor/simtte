@@ -33,6 +33,11 @@ Model file:  gompertz_ode.cpp
   p11 = 1
 
 [GLOBAL]
+  // -- BEGIN simtte survival scaffolding -----------------------------
+  // General-purpose in-solver event-detection scaffolding, identical
+  // in every library model this package ships; see exponential_ode.cpp
+  // for the full rationale comment (kept there only, to avoid repeating
+  // it verbatim in every file).
   static int    event_found = 0;
   static double TEVT        = 0.0;
   // Grid-free refinement bracket (Phase 2.5, reports/04_author_decisions.md
@@ -71,6 +76,7 @@ Model file:  gompertz_ode.cpp
     TEVT = SOLVERTIME;
     P_POST = p11;
   }
+  // -- END simtte survival scaffolding (ODE half) --------------------
 
 [CAPTURE] @annotated
   TEVT        : Latched in-solver event time (SOLVERTIME at first p11 <= U), or 0 if not yet found
