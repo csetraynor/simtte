@@ -38,6 +38,7 @@ $CMT DEPOT CENT
 $ODE
 dxdt_DEPOT = -KA*DEPOT;
 dxdt_CENT = KA*DEPOT - (CL/V)*CENT;
+$CAPTURE CL KA
 "
 ```
 

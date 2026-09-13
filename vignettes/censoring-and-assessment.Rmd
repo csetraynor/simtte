@@ -51,7 +51,7 @@ reading those two columns keeps working); `sim_reason` records why --
 as `U`:
 
 ```{r censoring-arg}
-sim_censored <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+sim_censored <- sim_tte_ode(model = "exponential", param = list(H0 = 0.09),
   n = 200, end = 30, delta = 2,
   censoring = list(dist = "exponential", rate = 0.02), seed = 1)
 table(sim_censored$events$sim_reason)
@@ -88,7 +88,7 @@ rate_20pct <- censoring_rate_for(event_times, target = 0.2)
 rate_20pct
 
 # 2. Redraw: apply that rate to a larger cohort.
-check <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+check <- sim_tte_ode(model = "exponential", param = list(H0 = 0.09),
   n = 2000, end = 30, delta = 2,
   censoring = list(dist = "exponential", rate = rate_20pct), seed = 1)
 
