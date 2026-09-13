@@ -24,11 +24,16 @@ event time is located *during* integration (in-solver event detection),
 not resolved after the fact from a pre-simulated trajectory. Six
 built-in PK/PD hazard models ship out of the box, and `tte_model()`
 converts any user-supplied `mrgsolve` model into one usable the same
-way. The original closed-form Weibull/M-spline API
-(`sim_tte()`/`sim_tte_df()`) remains fully supported for the cases it
-covers better (an arbitrary M-spline knot count, exact Weibull behavior
-for very small shapes, or an externally simulated survival trajectory
-from any source).
+way. Covariates (including a `formula`/design-matrix interface),
+between-subject variability, right/interval censoring, and realistic
+visit schedules all compose with any model. The original closed-form
+Weibull/M-spline API (`sim_tte()`/`sim_tte_df()`) remains fully
+supported for the cases it covers better (an arbitrary M-spline knot
+count, exact Weibull behavior for very small shapes, or an externally
+simulated survival trajectory from any source).
+
+A companion package, **simttepower** (forthcoming), will build trial
+replication and power-analysis tooling on top of **simtte**.
 
 ## Overview
 
@@ -39,7 +44,12 @@ from any source).
   target-mediated disposition quantity, integrated directly as part of
   the ODE system — either one of six built-in library models, or your
   own `mrgsolve` model converted with `tte_model()`. Supports dosing,
-  time-varying covariates, and between-subject variability (`omega`).
+  covariates (raw columns, or a `formula` built into a design matrix),
+  and between-subject variability (`omega`). `add_censoring()`/
+  `add_interval_censoring()` and a family of visit-schedule generators
+  layer right and interval censoring, with realistic missed-visit,
+  dropout, and outcome-reactive assessment timing, on top of any
+  simulated output.
 - **Bespoke parametric/flexible hazard simulation** (`sim_tte()`/
   `sim_tte_df()`, the original API): a unified interface for Weibull and
   flexible M-spline baseline hazards, plus a fully model-agnostic entry
@@ -73,11 +83,12 @@ proceeding:
 devtools::install_github("csetraynor/simtte")
 ```
 
-## Quick Start
+## Quick start
 
-### Joint PK/PD and Time-to-Event Simulation
+One short example per capability – see the vignettes for the full
+picture.
 
-A built-in PK/PD hazard model, with dosing:
+### A built-in PK/PD hazard model, with dosing
 
 ``` r
 library(simtte)
@@ -85,10 +96,18 @@ library(simtte)
 dose <- data.frame(ID = 1:50, time = 0, cmt = 1, amt = 100, evid = 1)
 sim <- sim_tte_ode(model = "irm1_hazard", param = list(H0 = 0.01, beta_r = 1),
   n = 50, end = 30, delta = 2, data = dose, seed = 1)
+#> Building irm1_hazard ... done.
 head(sim$events)
+#>   ID sim_time sim_status     sim_reason
+#> 1  1 30.00000          0 administrative
+#> 2  2 30.00000          0 administrative
+#> 3  3 30.00000          0 administrative
+#> 4  4 16.40492          1          event
+#> 5  5 30.00000          0 administrative
+#> 6  6 18.15148          1          event
 ```
 
-Your own `mrgsolve` PK/PD model, converted with `tte_model()`:
+### Your own PK/PD model, converted with `tte_model()`
 
 ``` r
 my_model <- "
@@ -100,15 +119,69 @@ dxdt_CENT = KA*DEPOT - (CL/V)*CENT;
 "
 tm <- tte_model(my_model, hazard = "H0 * exp(lp + beta * (CENT/V))",
   params = list(H0 = 0.01, beta = 0.05))
-
-sim <- sim_tte_ode(model = tm, n = 50, end = 30, delta = 2, data = dose,
+#> Building simtte_tte_model_7b992c4fe49b ... done.
+sim_tm <- sim_tte_ode(model = tm, n = 50, end = 30, delta = 2, data = dose,
   seed = 1)
-head(sim$events)
+head(sim_tm$events)
+#>   ID  sim_time sim_status     sim_reason
+#> 1  1 30.000000          0 administrative
+#> 2  2 30.000000          0 administrative
+#> 3  3 30.000000          0 administrative
+#> 4  4  8.003627          1          event
+#> 5  5 30.000000          0 administrative
+#> 6  6  8.918469          1          event
 ```
 
-See `vignette("pkpd-time-to-event", package = "simtte")` for dosing,
-covariates, between-subject variability, and the full `tte_model()`
-walkthrough.
+### Covariates, via a formula and a design matrix
+
+``` r
+baseline <- data.frame(age = rnorm(50, 50, 10),
+  arm = factor(rep(c("control", "treated"), 25)))
+sim_cov <- sim_tte_ode(model = "weibull", param = list(mu = -1, shape = 1.5),
+  n = 50, end = 20, delta = 2, covariates = baseline,
+  formula = ~ age + arm, beta = c(age = 0.01, armtreated = -0.5), seed = 1)
+head(sim_cov$events)
+#>   ID  sim_time sim_status sim_reason
+#> 1  1 1.6907000          1      event
+#> 2  2 1.9528771          1      event
+#> 3  3 1.0421564          1      event
+#> 4  4 0.4222671          1      event
+#> 5  5 1.8574621          1      event
+#> 6  6 0.4012701          1      event
+```
+
+### Right censoring
+
+``` r
+censored <- add_censoring(sim$events, censoring = list(dist = "exponential",
+  rate = 0.02), end = 30, seed = 2)
+table(censored$sim_reason)
+#> 
+#> administrative       censored          event 
+#>             29             16              5
+```
+
+### Interval censoring from a realistic visit schedule
+
+``` r
+sched <- visit_schedule(n = 50, every = 4, end = 30, jitter = 1, seed = 1)
+realized <- thin_visits(sched, p_miss = 0.1, seed = 2)
+interval <- add_interval_censoring(censored, visits = realized)
+head(interval[, c("sim_time", "sim_status", "sim_time_left", "sim_time_right")])
+#>    sim_time sim_status sim_time_left sim_time_right
+#> 1 30.000000          0     28.889351            Inf
+#> 2 20.237404          0     19.353114            Inf
+#> 3  7.332633          0      4.539683            Inf
+#> 4 16.404917          1     15.534441       19.77223
+#> 5  4.476309          0      0.000000            Inf
+#> 6 18.151475          1     16.447422       19.82255
+```
+
+See `vignette("pkpd-time-to-event", package = "simtte")` for the full
+walkthrough, `vignette("bring-your-own-model", package = "simtte")` for
+everything `tte_model()` does, and
+`vignette("censoring-and-assessment", package = "simtte")` for the full
+censoring/visit-schedule toolkit.
 
 ## Legacy API: `sim_tte()` / `sim_tte_df()`
 
@@ -118,8 +191,6 @@ The original closed-form Weibull/M-spline API, unchanged since CRAN
 ### Weibull Model
 
 ``` r
-library(simtte)
-
 set.seed(42)
 lp <- matrix(rnorm(50, 0, 0.5), nrow = 50)
 
@@ -131,15 +202,23 @@ result <- sim_tte(
   type     = "weibull",
   end_time = 100
 )
+#> Building weibull ... done.
 
 head(result)
+#> # A tibble: 6 × 4
+#>   sim_time sim_status    ID      lp
+#>      <dbl>      <dbl> <dbl>   <dbl>
+#> 1      0.7          1     1  0.685 
+#> 2      4.8          1     2 -0.282 
+#> 3      3.1          1     3  0.182 
+#> 4      1.8          1     4  0.316 
+#> 5      0.2          1     5  0.202 
+#> 6      0.2          1     6 -0.0531
 ```
 
 ### Flexible M-Spline Model
 
 ``` r
-library(simtte)
-
 data("ms_data")
 
 lp <- matrix(runif(nrow(ms_data$basis)), nrow = nrow(ms_data$basis))
@@ -152,8 +231,18 @@ result <- sim_tte(
   time  = ms_data$time,
   type  = "ms"
 )
+#> Building ms ... done.
 
 head(result)
+#> # A tibble: 6 × 4
+#>   sim_time sim_status    ID    lp
+#>      <dbl>      <dbl> <dbl> <dbl>
+#> 1     6.73          0     1 0.719
+#> 2     4.35          1     2 0.324
+#> 3     2.86          1     3 0.779
+#> 4     1.84          1     4 0.394
+#> 5     1.68          1     5 0.679
+#> 6     2.84          1     6 0.776
 ```
 
 ### Event-Time Interpolation
@@ -176,6 +265,7 @@ result_grid <- sim_tte(
   end_time = 100,
   event_time_method = "grid"          # default
 )
+#> Loading model from cache.
 
 result_interp <- sim_tte(
   pi       = lp,
@@ -186,6 +276,7 @@ result_interp <- sim_tte(
   end_time = 100,
   event_time_method = "log_survival"  # sub-grid refinement
 )
+#> Loading model from cache.
 ```
 
 See [Statistical Background](#statistical-background) below for what
@@ -206,11 +297,14 @@ data_sim <- explore_pi_tq_surv(
   type     = "weibull",
   end_time = 100
 )
+#> Loading model from cache.
 
 plot(survdiff_tq ~ lp, data = data_sim,
      xlab = "Log Hazard Ratio", ylab = "Survival Difference at Median",
      main = "Effect of Prognostic Index on Median Survival")
 ```
+
+<img src="man/figures/README-legacy-explore-1.png" alt="Survival difference at the median versus log hazard ratio, a roughly S-shaped curve centered at zero" width="100%" />
 
 ## Statistical Background
 
@@ -298,15 +392,28 @@ crossing occurs.
 | Function | Description |
 |----|----|
 | `sim_tte_ode()` | In-solver joint PK/PD and time-to-event simulation (built-in library models or a converted user model) |
+| `sim_tte_ode_models()` | List the built-in library model names and their between-subject-variability targets |
 | `tte_model()` | Convert a user-supplied `mrgsolve` PK/PD model for use with `sim_tte_ode()` |
+| `add_censoring()` | Apply independent right censoring to any simulated events data frame |
+| `censoring_rate_for()` | Solve for a censoring-distribution parameter hitting a target censoring fraction |
+| `draw_censoring_times()` | Draw directly from a censoring/delay distribution spec |
+| `add_interval_censoring()` | Map a (possibly right-censored) outcome onto a visit-schedule interval |
+| `visit_schedule()` | Generate a per-subject visit schedule (fixed spacing + jitter) |
+| `thin_visits()` | Missed visits and assessment dropout on a schedule (non-informative) |
+| `visit_schedule_informative()` | A visit schedule that reacts to the simulated event time (informative) |
 | `sim_tte()` | Simulate a survival dataset from Weibull or M-spline model (legacy API) |
 | `sim_tte_df()` | Apply inverse transform sampling to custom mrgsolve output (legacy API) |
 | `explore_pi_tq_surv()` | Explore survival differences across prognostic index values |
+| `simtte_example_model()` / `simtte_example_models()` | Bundled example PK/PD-hazard models for `sim_tte_df()` |
 | `ms_data` | Bundled example M-spline basis, coefficients, and time grid |
 
 ## Output Structure
 
-All simulation functions return a data frame with the following columns:
+`sim_tte_ode()` returns a list whose `$events` is a data frame with
+`ID`, `sim_time`, `sim_status` (1 = event, 0 = censored), and
+`sim_reason` (`"event"`/`"censored"`/`"administrative"`), plus interval
+bounds if a visit schedule was used. The legacy
+`sim_tte()`/`sim_tte_df()` functions return a plain data frame:
 
 | Column       | Type    | Description                              |
 |--------------|---------|------------------------------------------|
@@ -317,19 +424,23 @@ All simulation functions return a data frame with the following columns:
 
 ## Vignettes
 
-Three vignettes provide deeper guidance:
+Four vignettes provide deeper guidance:
 
-- **Joint PK/PD and Time-to-Event Simulation** — `sim_tte_ode()`,
-  `tte_model()`, dosing, covariates, between-subject variability.
-- **Getting Started** — Basic workflow for Weibull and M-spline
-  simulation (legacy API).
-- **Advanced Simulation Scenarios** — Custom mrgsolve models,
-  sensitivity analyses, and complex trial designs (legacy API).
+- **Joint PK/PD and Time-to-Event Simulation** — the tour: library
+  models, covariates, between-subject variability.
+- **Bring Your Own PK/PD Model** — `tte_model()` conversion mechanics,
+  `$OMEGA` coexistence, and the covariate/hazard-expression boundary.
+- **Censoring and Realistic Assessment Schedules** — right/interval
+  censoring, left censoring, and visit-schedule generators.
+- **Getting Started** / **Advanced Simulation Scenarios** — the original
+  Weibull/M-spline API (1.0.x).
 
 ``` r
-vignette("pkpd-time-to-event", package = "simtte")
-vignette("introduction",       package = "simtte")
-vignette("advanced-usage",     package = "simtte")
+vignette("pkpd-time-to-event",       package = "simtte")
+vignette("bring-your-own-model",     package = "simtte")
+vignette("censoring-and-assessment", package = "simtte")
+vignette("introduction",             package = "simtte")
+vignette("advanced-usage",           package = "simtte")
 ```
 
 ## Citation

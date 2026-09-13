@@ -68,8 +68,7 @@ sim_time_right), NA, sim_time_right)} -- see the vignette's
 \description{
 Adds interval-censoring bounds to an already-simulated (and, if
 applicable, already right-censored -- see "Ordering" below) events
-data frame, the mechanism described in
-\code{reports/18_interval_censoring_design.md} (option A): given a
+data frame: given a
 visit schedule, an event known to have occurred exactly at
 \code{sim_time} is only \emph{detectable} at the first visit at or
 after it, and a censored subject is only known event-free through

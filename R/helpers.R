@@ -942,9 +942,10 @@
             paste(missing_cols, collapse = ", "), ".", call. = FALSE)
     }
     # The "covariates$ID must equal exactly 1:n_subjects" restriction
-    # (?sim_tte_ode "Time-varying covariates", "Limitation") is already
-    # enforced by .canonicalize_lp_data() itself (identical check, used
-    # unchanged for sim_tte()'s own lp_data) -- not duplicated here.
+    # (?sim_tte_ode "Covariates and the linear predictor", "Limitation")
+    # is already enforced by .canonicalize_lp_data() itself (identical
+    # check, used unchanged for sim_tte()'s own lp_data) -- not
+    # duplicated here.
     canonical <- .canonicalize_lp_data(covariates, n_subjects,
         value_cols = names(beta))
     .validate_lp_data_trajectories(canonical, value_cols = names(beta))

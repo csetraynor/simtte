@@ -37,16 +37,15 @@ subject is censored at the follow-up horizon `end` if no crossing
 occurs). This happens inside the solver, not after the fact from a
 pre-simulated trajectory -- the mechanism `sim_tte_ode()` implements.
 
-Two ways to get a PK/PD model into this mechanism:
+This vignette is the tour: the built-in models, covariates, and
+between-subject variability, all through `sim_tte_ode()`. Two more
+vignettes cover the rest of the toolkit in depth --
+`vignette("bring-your-own-model")` for converting your own PK/PD model
+with `tte_model()`, and `vignette("censoring-and-assessment")` for
+right/interval censoring and realistic visit schedules. Everything
+below is real, executed code, not illustrative snippets.
 
-- Use one of six **built-in library models** (`sim_tte_ode(model = "pk_hazard")`,
-  `"irm1_hazard"`-`"irm4_hazard"`, `"tmdd_hazard"`), each a well-known
-  PK/PD structure with the hazard already wired in.
-- Convert **your own** `mrgsolve` PK/PD model with `tte_model()`.
-
-Everything below is real, executed code -- not illustrative snippets.
-
-## 2. `sim_tte_ode()` with a baseline model
+## 2. Library models
 
 The simplest case has no PK/PD at all: a built-in Weibull hazard.
 
@@ -56,29 +55,22 @@ sim <- sim_tte_ode(model = "weibull", param = list(mu = -1, shape = 1.5),
 head(sim$events)
 ```
 
-`sim$events` is always three columns: `ID`, `sim_time`, `sim_status`
-(1 = event, 0 = censored at `end`).
+`sim$events` is always at least three columns: `ID`, `sim_time`,
+`sim_status` (1 = event, 0 = censored at `end`). `"exponential"`,
+`"weibull"`, `"gompertz"`, and `"mspline"` (a flexible, continuously
+evaluated baseline hazard) are the closed-hazard-shape models;
+`sim_tte_ode_models()` lists every built-in name, including the six
+PK/PD-linked ones below, together with what between-subject
+variability each supports.
 
-A covariate that changes over time (`covariates`/`beta`) composes with
-any model, including this one:
-
-```{r weibull-covariate}
-cov <- data.frame(time = c(0, 10), sex = c(0, 1))
-sim_cov <- sim_tte_ode(model = "weibull", param = list(mu = -1, shape = 1.5),
-  n = 30, end = 20, delta = 2, covariates = cov, beta = c(sex = 0.8),
-  seed = 1)
-head(sim_cov$events)
+```{r sim-tte-ode-models}
+sim_tte_ode_models()
 ```
 
-`lp(t) = beta["sex"] * sex(t)` is folded into the hazard from `time =
-10` onward for every subject; every subject's `covariates` must
-include an observation at `time = 0` (no implicit `lp(0)`).
-
-## 3. A PK/PD library model, with dosing and between-subject variability
-
-`irm1_hazard` links the hazard to an indirect-response PD compartment
-relative to its own pre-dose baseline. Dosing is ordinary `mrgsolve`
-event data, passed via `data`:
+Six more models link the hazard to a genuine PK/PD mechanism instead
+of a fixed shape. `irm1_hazard` links it to an indirect-response PD
+compartment relative to its own pre-dose baseline; dosing is ordinary
+`mrgsolve` event data, passed via `data`:
 
 ```{r irm1-dose}
 dose <- data.frame(ID = 1:30, time = 0, cmt = 1, amt = 100, evid = 1)
@@ -87,6 +79,65 @@ sim_pkpd <- sim_tte_ode(model = "irm1_hazard",
   data = dose, seed = 1)
 head(sim_pkpd$events)
 ```
+
+The other five (`pk_hazard`, concentration-driven; `irm2_hazard`-`irm4_hazard`,
+the other indirect-response types; `tmdd_hazard`, target-mediated drug
+disposition) work the same way, each reusing an unedited `mrgsolve::modlib()`
+PK/PD backbone plus a hazard link -- see `?sim_tte_ode` "PK/PD-linked
+hazard models" for each one's exact hazard expression.
+
+## 3. Covariates and the linear predictor
+
+Covariates compose with any model via a formula and a design matrix:
+`sim_tte_ode()` builds `X` with `stats::model.matrix()` and computes
+`lp = X %*% beta`.
+
+```{r weibull-covariate}
+baseline <- data.frame(age = rnorm(30, 50, 10),
+  arm = factor(rep(c("control", "treated"), 15)))
+sim_cov <- sim_tte_ode(model = "weibull", param = list(mu = -1, shape = 1.5),
+  n = 30, end = 20, delta = 2, covariates = baseline,
+  formula = ~ age + arm, beta = c(age = 0.01, armtreated = -0.5),
+  seed = 1)
+head(sim_cov$events)
+```
+
+`baseline` has no `time` column, so it is a fixed, per-subject covariate
+set (equivalent to a single observation at `time = 0`, in effect for
+the whole follow-up -- a multi-row frame like this one also determines
+`n` when it is not supplied); `arm` is coded as an ordinary treatment-contrast
+factor, and the intercept `formula` would otherwise imply is dropped
+automatically (with a message) since the model's own `mu` already plays
+that role. `formula` accepts anything `stats::model.matrix()` does --
+`I(age^2)`, `log()`, interactions, `splines::ns()` -- as long as the
+result is linear in `beta`.
+
+The original interface, one raw covariate column per named coefficient
+with no formula at all, still works unchanged:
+
+```{r weibull-covariate-legacy}
+cov <- data.frame(time = c(0, 10), sex = c(0, 1))
+sim_legacy <- sim_tte_ode(model = "weibull", param = list(mu = -1, shape = 1.5),
+  n = 30, end = 20, delta = 2, covariates = cov, beta = c(sex = 0.8),
+  seed = 1)
+```
+
+### Where a covariate ends and a model parameter begins
+
+`formula`/`beta` only ever need to be linear in `beta`, not in the
+covariates -- a covariate column can already be an arbitrarily
+nonlinear, *fixed* transform (`I(age^2)`, or a column computed as
+`dose / (EC50 + dose)` for a literal numeric `EC50`). A link that is
+nonlinear in a *parameter* you want to estimate or vary -- an Emax
+effect whose `EC50` is itself unknown -- does not fit here: it belongs
+in the model's own hazard expression instead, via
+`tte_model(hazard = "H0 * (CP / (EC50 + CP))", params = list(EC50 = 5))`
+(see `vignette("bring-your-own-model")`), where `EC50` composes with
+PK/PD states, BSV, and dosing directly, and can be varied like any
+other model parameter. A *fixed* `EC50` gives the identical event-time
+distribution written either way; only the second way lets `EC50` vary.
+
+## 4. Between-subject variability
 
 Between-subject variability (BSV) on a structural PK/PD parameter
 (here, clearance `CL`) is `omega`, a named matrix (any subset of the
@@ -122,80 +173,25 @@ head(sim_idata$events)
 
 Any `idata` column matching a declared model parameter overrides that
 parameter per subject -- `U`/`END` (drawn/filled automatically when
-absent) work the same way.
+absent) work the same way. A user-supplied model with its own declared
+`$OMEGA` block uses `omega` the ordinary `mrgsolve` way instead -- see
+`vignette("bring-your-own-model")`.
 
-## 4. `tte_model()`: bring in your own PK/PD model
+## 5. Beyond this tour
 
-The six library models cover common structures; `tte_model()` converts
-*any* `mrgsolve` model with an `$ODE`/`$DES` block. Here is a complete,
-short model -- one-compartment PK with first-order absorption -- with
-no survival scaffolding of its own:
+Two more vignettes cover the rest in depth:
 
-```{r tte-model-source}
-my_model <- "
-$PARAM CL = 1, V = 20, KA = 1
-$CMT DEPOT CENT
-$ODE
-dxdt_DEPOT = -KA*DEPOT;
-dxdt_CENT = KA*DEPOT - (CL/V)*CENT;
-"
-```
+- **`vignette("bring-your-own-model")`**: `tte_model()` converts *any*
+  `mrgsolve` model with an `$ODE`/`$DES` block into one usable here,
+  for when the six built-in PK/PD models above do not cover your
+  mechanism.
+- **`vignette("censoring-and-assessment")`**: right censoring
+  (including choosing a rate for a target censoring fraction), interval
+  censoring from a visit schedule (including left censoring), and
+  realistic visit-schedule generators (jitter, missed visits/dropout,
+  and outcome-reactive schedules).
 
-Convert it, naming the hazard as a plain C++ expression in terms of
-the model's own quantities (`CENT`, `V`) and new hazard parameters
-(`H0`, `beta`):
-
-```{r tte-model-convert}
-tm <- tte_model(my_model, hazard = "H0 * exp(lp + beta * (CENT/V))",
-  params = list(H0 = 0.01, beta = 0.05))
-tm
-```
-
-`tm$code` is the full converted model, ready to inspect:
-
-```{r tte-model-code}
-cat(tm$code, sep = "\n")
-```
-
-Pass `tm` to `sim_tte_ode()` exactly like a built-in model name:
-
-```{r tte-model-sim}
-sim_tm <- sim_tte_ode(model = tm, n = 30, end = 20, delta = 2, data = dose,
-  seed = 1)
-head(sim_tm$events)
-```
-
-If your own model already declares its own `$OMEGA` block (the classic
-`TVCL`/`ETA()` idiom), `tte_model()` leaves it untouched and
-`sim_tte_ode()`'s `omega` argument goes through it directly instead of
-the `idata` route shown in section 3:
-
-```{r tte-model-omega}
-my_model_omega <- "
-$PARAM TVCL = 1, TVV = 20, KA = 1
-$OMEGA @labels ETA_CL ETA_V
-0 0
-$CMT DEPOT CENT
-$MAIN
-double CL = TVCL*exp(ETA_CL);
-double V  = TVV*exp(ETA_V);
-$ODE
-dxdt_DEPOT = -KA*DEPOT;
-dxdt_CENT = KA*DEPOT - (CL/V)*CENT;
-"
-tm_omega <- tte_model(my_model_omega,
-  hazard = "H0 * exp(lp + beta * (CENT/V))",
-  params = list(H0 = 0.01, beta = 0.05))
-sim_tm_omega <- sim_tte_ode(model = tm_omega, omega = diag(c(0.09, 0.16)),
-  n = 30, data = dose, end = 20, delta = 2, seed = 1)
-head(sim_tm_omega$events)
-```
-
-A bare compiled `mrgsolve` model (not wrapped by `tte_model()`) is not
-accepted directly by `sim_tte_ode()` -- convert it first. This keeps
-there to exactly one way to bring a model in.
-
-## 5. Accuracy, messages, and when things get slow
+## 6. Accuracy, messages, and when things get slow
 
 `delta` (and `add`) only control how finely the returned event time is
 *reported* -- the event time itself is located inside the solver, at
@@ -235,288 +231,7 @@ fixed set of shipped interior-knot counts (3, 5, or 7); `sim_tte(type
 piecewise-constant on its own reporting grid instead. Use whichever
 property you need more.
 
-Every `tte_model()` conversion is a real C++ compile (a few seconds).
-`mrgsolve::mcode_cache()` (used internally) skips recompiling an
-unchanged, previously-seen model within the same cache directory --
-`options(mrgsolve.project = <a persistent directory>)` makes that
-cache survive across R sessions too, worthwhile if you reconvert the
-same model many times (e.g. a simulation study script re-run
-repeatedly). Two caveats: a caller-supplied `name` reused for
-genuinely different `hazard`/`params` content, called back to back,
-can in principle collide within the same build directory (leave
-`name` at its default, which avoids this by construction); and in a
-parallel workflow, give each worker its own cache directory, or simply
-let each one recompile -- the compile cost is small next to the
-parallel speed-up.
-
-## 6. Right censoring
-
-Every simulation so far has been administratively censored at `end`
-only. `add_censoring()` layers a second, independent censoring process
-on top of any `$events`-shaped output (`sim_tte_ode()`, `sim_tte()`, or
-`sim_tte_df()`), drawing a per-subject censoring time and taking
-`min(event time, censoring time, end)`:
-
-```{r censoring-basic}
-sim_uncensored <- sim_tte_ode(model = "exponential",
-  param = list(H0 = 0.05), n = 200, end = 30, delta = 2, seed = 1)
-table(sim_uncensored$events$sim_reason)
-
-censored <- add_censoring(sim_uncensored$events,
-  censoring = list(dist = "exponential", rate = 0.02), end = 30, seed = 2)
-table(censored$sim_reason)
-```
-
-`sim_status`/`sim_time` are updated in place (so any existing code
-reading those two columns keeps working); `sim_reason` records why --
-`"event"`, `"censored"` (pulled earlier by the independent draw), or
-`"administrative"` (hit `end`). `sim_tte_ode()` also accepts a
-`censoring = ` argument directly, drawing inside the same seeded call
-as `U`:
-
-```{r censoring-arg}
-sim_censored <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
-  n = 200, end = 30, delta = 2,
-  censoring = list(dist = "exponential", rate = 0.02), seed = 1)
-table(sim_censored$events$sim_reason)
-```
-
-`"exponential"`, `"weibull"` (fixed `shape`, solves for `scale`),
-`"uniform"` (a fixed interval -- the common case for uniform-accrual
-administrative censoring), `"lognormal"` (fixed `sdlog`), `"gamma"`
-(fixed `shape`, `rate` only), and `"user"` (any function `n ->
-numeric(n)`) are the six `dist` options; see `?add_censoring`.
-Censoring that depends on a subject's own simulated PK/PD trajectory
-(informative dropout, e.g. driven by toxicity) is out of scope -- see
-`reports/16_censoring_design.md` for why, and what a future version
-supporting it would need to change.
-
-### Choosing the censoring rate for a target censoring fraction
-
-**`censoring_rate_for()` solves for a `dist` parameter (rate, scale,
-meanlog, or gamma rate) that would give a target independent-censoring
-fraction, estimated from the event times of an already-run,
-uncensored simulation.** It is an approximation, not an exact
-calculation -- the estimate depends on the particular uncensored run
-it is given, so always redraw on a larger cohort afterward and check
-the realized fraction landed close to the target, the way this example
-does:
-
-```{r censoring-rate-for}
-# 1. Solve: what rate gives ~20% independently censored, given this
-#    model's own event-time scale?
-event_times <- sim_uncensored$events$sim_time[
-  sim_uncensored$events$sim_status == 1]
-rate_20pct <- censoring_rate_for(event_times, target = 0.2)
-rate_20pct
-
-# 2. Redraw: apply that rate to a larger cohort.
-check <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
-  n = 2000, end = 30, delta = 2,
-  censoring = list(dist = "exponential", rate = rate_20pct), seed = 1)
-
-# 3. Check: did it land close to 20%?
-mean(check$events$sim_reason == "censored")
-```
-
-If the realized fraction in step 3 is not close enough, re-solve with a
-larger or different uncensored sample rather than trusting the first
-answer -- the check is the point, not an optional extra.
-
-## 7. Interval censoring
-
-Right censoring still gives an *exact* event time when an event
-happens. In a real trial, many endpoints (progression, response) are
-only checked at scheduled visits -- an event is known to have happened
-somewhere between the last visit where the subject was event-free and
-the first visit where it was detected. `add_interval_censoring()` maps
-an already-simulated (and, if used, already right-censored) outcome
-onto that interval:
-
-```{r interval-basic}
-visits <- c(0, 5, 10, 15, 20, 25, 30)
-interval <- add_interval_censoring(sim_censored$events, visits = visits)
-head(interval[, c("ID", "sim_time", "sim_status", "sim_reason",
-  "sim_time_left", "sim_time_right")])
-```
-
-`sim_time`/`sim_status`/`sim_reason` are untouched -- `sim_time_left`/
-`sim_time_right` are added on top, so anything already reading the
-first three keeps working. `sim_time_right` is `Inf` whenever there is
-no known upper bound: a censored subject (never detected as an event
-under this schedule), or -- more subtly -- an event that genuinely
-happened but only *after* the subject's last scheduled visit, so the
-schedule itself never confirmed it. `sim_status` still reads `1` for
-that second case; the exact columns are the simulation's ground truth,
-independent of what the visit schedule happened to observe.
-
-**Order matters**: apply `add_interval_censoring()` *after*
-`add_censoring()`, never before -- a dropout changes `sim_time`/
-`sim_status`, and the interval mapping needs to see the final value to
-know there was no assessment after the dropout time. `sim_tte_ode()`'s
-own `censoring =`/`visits =` arguments apply them in this order
-automatically.
-
-A visit schedule can also be per-subject (a `data.frame(ID, time)`), or
-generated with fixed spacing plus random jitter -- realistic, since
-scheduled visits rarely land exactly on the nominal day:
-
-```{r interval-jitter}
-sched <- visit_schedule(n = 200, every = 4, end = 24, jitter = 1, seed = 1)
-head(sched)
-
-sim_jittered <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
-  n = 200, end = 24, delta = 2, visits = list(every = 4, jitter = 1),
-  seed = 1)
-head(sim_jittered$events[, c("sim_time", "sim_status", "sim_time_left",
-  "sim_time_right")])
-```
-
-For a nonparametric interval-censored survival fit, convert
-`sim_time_right`'s `Inf` to `NA` (the `survival` package's own
-convention for an open upper bound) and hand both bounds to
-`survival::Surv(..., type = "interval2")` -- this and the "Informative
-assessment schedules" chunk below are the only places in this vignette
-that need the optional `survival` package (`Suggests`, not `Imports`);
-both are skipped if it is not installed:
-
-```{r interval-survfit, eval = requireNamespace("survival", quietly = TRUE)}
-right_for_surv <- ifelse(is.infinite(interval$sim_time_right), NA,
-  interval$sim_time_right)
-fit <- survival::survfit(survival::Surv(time = sim_time_left,
-  time2 = right_for_surv, type = "interval2") ~ 1,
-  data = data.frame(sim_time_left = interval$sim_time_left,
-    right_for_surv = right_for_surv))
-summary(fit, times = visits)
-```
-
-### Left censoring
-
-An event with `sim_time_left == 0` -- one that happened before the
-first post-baseline visit -- is a **left-censored observation**: the
-event is known to have occurred before `sim_time_right`, with the exact
-time unknown. `add_interval_censoring()` already produces this with no
-separate mechanism:
-
-```{r left-censoring}
-ev <- data.frame(ID = 1:3, sim_time = c(5, 15, 25),
-  sim_status = c(1L, 1L, 0L))
-add_interval_censoring(ev, visits = c(0, 10))
-```
-
-Subject 1's row (`sim_time_left = 0`, `sim_time_right = 10`) *is* left
-censoring -- "no lower bound" is exactly what `sim_time_left == 0`
-means. There is no dedicated `left_censor_at = ` option: it would only
-ever rebuild, less completely, what a plain `add_interval_censoring()`
-call already gives for the whole cohort at once
-(`reports/21_left_censoring_evaluation.md`).
-
-### Delayed entry (not implemented)
-
-A genuinely different concept, easy to confuse with left censoring:
-**delayed entry / left truncation**, where a subject is only observed
-from some entry time `entry > 0` onward (e.g. enrollment after
-treatment already started), and a subject whose event already happened
-before `entry` is excluded from the risk set entirely rather than
-bounded by an interval. This changes the analysis dataset's *shape* --
-a counting-process `survival::Surv(start, stop, event)` rather than a
-single time column -- not just how one event is bounded, and nothing in
-this package currently represents it. A future `add_delayed_entry(events,
-entry)` is the natural place for it; one open design question it would
-need to resolve is how its administrative horizon (`end`, absolute
-treatment-time) relates to a horizon more naturally expressed relative
-to each subject's own `entry` (e.g. "24 months after enrollment") --
-see `reports/21_left_censoring_evaluation.md` for the full discussion.
-
-## 8. Realistic visit schedules
-
-A fixed or jittered schedule (section 7 above) assumes every subject
-attends every visit. Two generators layer more realistic visit-process
-randomness on top of the same `visits =` mechanism.
-
-### Missed visits and assessment dropout
-
-`thin_visits()` reads no simulated outcome at all -- it only thins a
-schedule, so it can never bias an interval-censored analysis (the
-visit process stays independent of the outcome, the assumption most
-such analyses make). Each non-baseline visit is independently missed
-with probability `p_miss`; independently of that, a subject may also
-start dropping out at a random visit and never return, with probability
-`p_dropout`:
-
-```{r thin-visits}
-sched <- visit_schedule(n = 200, every = 4, end = 24, jitter = 1, seed = 1)
-realized <- thin_visits(sched, p_miss = 0.1, p_dropout = 0.05, seed = 2)
-nrow(sched) - nrow(realized) # visits lost to missed/dropout
-out <- add_interval_censoring(sim_censored$events, visits = realized)
-head(out[, c("sim_time", "sim_status", "sim_time_left", "sim_time_right")])
-```
-
-`thin_visits()` also accepts a plain vector schedule directly, given
-the subject IDs to expand it across (`ids = `), and composes with
-`add_censoring()` in either relative order -- it only ever touches the
-visit schedule, never `events`.
-
-### Informative assessment schedules
-
-`visit_schedule_informative()` is different in kind: it reads
-`$events` and lets the visit process **react to the simulated
-outcome** -- a visit shortly before a subject's event may be missed at
-an elevated rate (`miss_near_event`, e.g. "too unwell to attend"), and
-an unscheduled extra visit may be added shortly after it
-(`extra_visit_after_event`, e.g. "brought in for follow-up after a
-reported symptom"). This makes the resulting schedule **informative by
-construction** -- whether/when a subject is assessed now depends on
-whether/when they had the event -- which every function in this
-package says loudly, on every call, because it breaks the assumption
-most interval-censored analyses (including the Turnbull fit above) make
-about assessment timing. Use it to *study* that bias, not as a general
-visit generator:
-
-```{r informative-bias, message = FALSE, eval = requireNamespace("survival", quietly = TRUE)}
-rate <- 0.08
-sim_small <- sim_tte_ode(model = "exponential", param = list(H0 = rate),
-  n = 800, end = 24, delta = 2, seed = 1)
-base_sched <- visit_schedule(n = 800, every = 3, end = 24, seed = 1)
-base_sched$ID <- sim_small$events$ID[base_sched$ID]
-visit_times <- seq(0, 24, by = 3)
-analytical_surv <- exp(-rate * visit_times)
-
-fit_surv <- function(schedule) {
-  out <- add_interval_censoring(sim_small$events, visits = schedule)
-  right <- ifelse(is.infinite(out$sim_time_right), NA, out$sim_time_right)
-  fit <- survival::survfit(survival::Surv(time = sim_time_left, time2 = right,
-    type = "interval2") ~ 1,
-    data = data.frame(sim_time_left = out$sim_time_left, right = right))
-  summary(fit, times = visit_times, extend = TRUE)$surv
-}
-
-c1_sched <- thin_visits(base_sched, p_miss = 0.3, seed = 2)
-c2_sched <- visit_schedule_informative(base_sched, sim_small$events,
-  end = 24, p_miss_base = 0.1, miss_near_event = list(window = 3, p = 0.9),
-  seed = 2)
-
-data.frame(time = visit_times,
-  truth = round(analytical_surv, 3),
-  c1_non_informative = round(fit_surv(c1_sched), 3),
-  c2_informative = round(fit_surv(c2_sched), 3))
-```
-
-At the same *nominal* miss rate (0.3 for C1's uniform miss; 0.1
-background + 0.9 near an event for C2 -- additive, not overriding: a
-near-window visit for an event subject is missed with probability
-`1 - (1 - p_miss_base) * (1 - p)`, so the two mechanisms compete rather
-than one replacing the other), C2's estimate strays further from the
-analytical curve than C1's -- missing visits specifically *because* a
-subject is about to have the event pulls the estimated survival away
-from the truth in a way a uniform miss rate does not. A
-third generator, reacting to a subject's own PK/PD trajectory rather
-than the exact event time, was evaluated and deferred
-(`reports/20_visit_process_evaluation.md`, "C3") -- it needs
-`keep_trajectory = TRUE` and interpolation between reported times, the
-same complexity class this package has consistently declined to add.
-
-## 9. Backward compatibility
+## 7. Backward compatibility
 
 `sim_tte()` and `sim_tte_df()` -- the original, closed-form/grid-based
 API -- are unchanged:
@@ -534,7 +249,7 @@ Reasons to still reach for them instead of `sim_tte_ode()`:
 - **An arbitrary M-spline knot count** (`sim_tte(type = "ms")`) --
   `sim_tte_ode(model = "mspline")` ships only 3 fixed variants.
 - **Exact Weibull behavior for very small shapes** (`shape < 0.05`,
-  see section 5) -- the closed-form calculation has no singularity
+  see section 6) -- the closed-form calculation has no singularity
   there.
 - **An externally simulated `p11` trajectory** (from any source, not
   necessarily `mrgsolve`) -- `sim_tte_df()` accepts any validated

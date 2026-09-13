@@ -3,17 +3,15 @@
 #' Writes the survival scaffold (\code{p11}, \code{U}, \code{END}, the
 #' \code{TEVT}/\code{event_found}/\code{T_PRE}/\code{P_PRE}/\code{P_POST}
 #' in-solver event-detection latch -- \code{\link{sim_tte_ode}}'s own
-#' mechanism, \code{reports/02_technical_design.md} section 2) onto a
+#' mechanism) onto a
 #' user's own \pkg{mrgsolve} PK/PD model, exactly the mechanical edit
 #' list every shipped \code{*_hazard.cpp} library model already
-#' documents by hand at the top of its \code{[PROB]} block
-#' (\code{reports/10_phase4_report.md}) -- generalized here to any
+#' documents by hand at the top of its \code{[PROB]} block --
+#' generalized here to any
 #' model with an \code{$ODE}/\code{$DES} block, not just the six
-#' shipped backbones. See \code{reports/13_converter_design.md} for the
-#' full design (block-locating/splicing mechanics, name-collision
-#' policy, why a hand-written \code{RESP0}-style helper variable is
-#' never needed) and \code{reports/14_phase5a_report.md} for what was
-#' built and the self-consistency check against the shipped library.
+#' shipped backbones. See \code{vignette("bring-your-own-model", package
+#' = "simtte")} for the full mechanics (block-locating/splicing, the
+#' name-collision policy) and worked examples.
 #'
 #' Nothing in the input model is edited in place except its
 #' \code{$GLOBAL}/\code{$MAIN} blocks (both singleton in \pkg{mrgsolve};
@@ -57,11 +55,10 @@
 #'   never share a build directory/model name even if called back to
 #'   back -- \code{mcode_cache()} is normally content-hash aware under
 #'   a repeated name (verified,
-#'   \code{reports/experiments/09_mcode_cache_test.R}), but two builds
+#'   verified directly), but two builds
 #'   under the same name landing in the same filesystem-timestamp
 #'   second can defeat its underlying \code{make}-based rebuild check
-#'   (found directly, \code{reports/experiments/14_mcode_cache_staleness_test.R}
-#'   -- exactly the pattern an automated test loop hits, converting many
+#'   (verified directly -- exactly the pattern an automated test loop hits, converting many
 #'   small variants back to back); hashing the default name sidesteps
 #'   this rather than relying on \code{mcode_cache()}'s own detection.
 #'   A caller-supplied \code{name} does not get this treatment (it is
@@ -70,12 +67,11 @@
 #'   \code{params} content called in quick succession.
 #' @param bsv_targets Character vector or \code{NULL} (default): the
 #'   parameter names \code{\link{sim_tte_ode}}'s \code{omega} argument
-#'   may target via its per-subject-\code{idata} route
-#'   (\code{reports/11_bsv_review.md} option (b)). Ignored (with a
+#'   may target via its per-subject-\code{idata} route. Ignored (with a
 #'   \code{message()}) if \code{model} already declares its own
 #'   \code{$OMEGA} block -- that model already has a working BSV route
 #'   (\code{\link[mrgsolve]{omat}}), and the two never combine for the
-#'   same model (\code{reports/11_bsv_review.md} section 4).
+#'   same model.
 #'
 #' @return An object of class \code{"simtte_model"}, a list with
 #'   \code{code} (the converted model source, printable directly with

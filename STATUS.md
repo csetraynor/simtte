@@ -18,7 +18,12 @@ design and analysis, two ways:
    built-in PK/PD hazard models ship out of the box (concentration-
    driven, four indirect-response variants, and a target-mediated-
    disposition model), plus a converter, `tte_model()`, that turns any
-   user-supplied `mrgsolve` model into one of these.
+   user-supplied `mrgsolve` model into one of these. Covariates enter
+   the hazard as a linear predictor, `lp = X %*% beta`, either from raw
+   named columns directly or, via an optional `formula` (e.g.
+   `~ age + arm`), from a `stats::model.matrix()` design matrix --
+   factor coding, interactions, and any term linear in `beta` all
+   compose this way (`reports/26_covariate_interface_report.md`).
 2. **Bespoke parametric/flexible hazard simulation** (`sim_tte()`/
    `sim_tte_df()`, the original CRAN 1.0.2 API): closed-form Weibull
    and flexible M-spline baseline hazards, plus a fully model-agnostic
@@ -50,9 +55,11 @@ censoring, are the remaining out-of-scope pieces -- see
 | Function | What it's for |
 |---|---|
 | `sim_tte_ode()` | In-solver PK/PD + time-to-event simulation |
+| `sim_tte_ode_models()` | List the built-in library model names and their BSV targets |
 | `tte_model()` | Convert your own `mrgsolve` model for `sim_tte_ode()` |
 | `add_censoring()` | Apply independent right censoring to any simulated events data frame |
 | `censoring_rate_for()` | Solve for a censoring-distribution parameter hitting a target censoring fraction |
+| `draw_censoring_times()` | Draw directly from a censoring/delay distribution spec |
 | `add_interval_censoring()` | Map a (possibly right-censored) outcome onto a visit-schedule interval |
 | `visit_schedule()` | Generate a per-subject visit schedule (fixed spacing + jitter) |
 | `thin_visits()` | Missed visits and assessment dropout on a schedule (non-informative) |
@@ -62,22 +69,40 @@ censoring, are the remaining out-of-scope pieces -- see
 | `explore_pi_tq_surv()` | Survival-difference-at-a-quantile utility |
 | `simtte_example_model()`/`simtte_example_models()` | Bundled example PK/PD-hazard models for `sim_tte_df()` |
 
-Three vignettes: `vignette("pkpd-time-to-event")` (the new capability,
-start here), `vignette("introduction")`, `vignette("advanced-usage")`
-(the original API).
+Full API freeze list with one-line contracts:
+`reports/27_public_api_freeze.md`.
+
+Five vignettes: `vignette("pkpd-time-to-event")` (the tour, start
+here), `vignette("bring-your-own-model")` (`tte_model()` in depth),
+`vignette("censoring-and-assessment")` (the whole censoring/visit-schedule
+toolkit), `vignette("introduction")`, `vignette("advanced-usage")` (the
+original API).
+
+## Release plan
+
+`simttepower`, a companion package holding the power-analysis/trial-
+replication framework, will be built as a separate package depending
+on `simtte` (skeleton in a later session). Release order:
+**simtte -> simttepower -> papers** -- `simtte` itself is not submitted
+to CRAN until `simttepower`, every vignette, and the companion journal
+manuscript are all finished. This repo's own sessions since the
+covariate-interface work have accordingly focused on stabilizing and
+documenting `simtte`'s public API (`reports/27_public_api_freeze.md`)
+rather than a CRAN release pass -- see
+`reports/28_documentation_pass_report.md`.
 
 ## How to run the tests
 
 ```
 Rscript dev/run-tests.R              # fast: ~40s
-Rscript dev/run-tests.R all --slow   # full: ~2m50s
-Rscript dev/run-tests.R --check --fast  # R CMD check --as-cran, slow tests off: ~1m40s
-Rscript dev/run-tests.R --check      # R CMD check --as-cran, slow tests on (pre-release): ~3m40s
+Rscript dev/run-tests.R all --slow   # full: ~3m
+Rscript dev/run-tests.R --check --fast  # R CMD check --as-cran, slow tests off: ~1m45s
+Rscript dev/run-tests.R --check      # R CMD check --as-cran, slow tests on (pre-release): ~3m45s
 ```
 
 See `reports/07_test_runbook.md` for targeted groups (one file/model at
 a time), what each test file covers, and a "how do I check X" table.
-Current counts: 1249 pass / 0 fail / 49 skip (fast), 1390 pass / 0 fail /
+Current counts: 1319 pass / 0 fail / 52 skip (fast), 1463 pass / 0 fail /
 0 skip (slow). `R CMD check`: `Status: OK` (0 errors, 0 warnings, 0
 notes).
 
@@ -152,4 +177,11 @@ narrative for each: what was tested, why, and what the numbers mean.
   release.
 - See `reports/24_pre_phase7_review.md` "Questions for the author" for
   the proposed-but-not-applied naming decisions and the Phase 7
-  readiness assessment.
+  readiness assessment (all three resolved, see
+  `reports/04_author_decisions.md` "After the pre-Phase-7 review").
+- `simttepower` (the power-analysis/trial-replication companion
+  package -- see "Release plan" above) has not been planned or built
+  yet; this repo's public API is frozen for it
+  (`reports/27_public_api_freeze.md`) and its own documentation pass is
+  complete (`reports/28_documentation_pass_report.md`), but no code for
+  it exists in this repo.

@@ -1,8 +1,7 @@
 #' Apply independent right censoring to a simulated events data frame
 #'
 #' Adds a second, independent censoring process to an already-simulated
-#' time-to-event data frame -- the mechanism described in
-#' \code{reports/16_censoring_design.md} (option A): a censoring time
+#' time-to-event data frame: a censoring time
 #' \eqn{C_i} is drawn per subject from \code{censoring}, and the observed
 #' outcome becomes \eqn{\min(T_i, C_i, end)}, with \code{sim_status = 1}
 #' only if \eqn{T_i} (the original \code{sim_time}) is the minimum.
@@ -64,9 +63,11 @@
 #'   \code{events} is returned unchanged.
 #'
 #' @seealso \code{\link{censoring_rate_for}}, to choose \code{rate}/
-#'   \code{scale} for a target censoring fraction; the "Right censoring"
-#'   section of \code{vignette("pkpd-time-to-event", package = "simtte")}
-#'   for a worked example, including the scale-helper workflow.
+#'   \code{scale} for a target censoring fraction; \code{\link{draw_censoring_times}},
+#'   to draw from the same \code{censoring}-shaped spec directly, with no
+#'   \code{events} data frame needed; the "Right censoring" section of
+#'   \code{vignette("pkpd-time-to-event", package = "simtte")} for a
+#'   worked example, including the scale-helper workflow.
 #' @export
 #' @examples
 #' \donttest{
@@ -392,4 +393,46 @@ censoring_rate_for <- function(times, target,
             "most likely cause).", call. = FALSE)
     }
     times
+}
+
+#' Draw independent times from a censoring/delay distribution spec
+#'
+#' A thin, exported wrapper over the same distribution dispatch
+#' \code{\link{add_censoring}} uses internally for its own \code{censoring}
+#' argument, and \code{\link{visit_schedule_informative}} uses for
+#' \code{extra_visit_after_event}. Exported so a caller that only wants
+#' \code{n} raw draws from a distribution spec -- to plan a scenario's
+#' expected censoring/dropout burden, or to
+#' pre-validate a spec before running many replicates of it -- does not
+#' need to build an \code{events}-shaped data frame just to reach this
+#' logic. \code{\link{add_censoring}}/\code{\link{visit_schedule_informative}}
+#' are unaffected and still call the same, unexported dispatcher
+#' directly; this function does not replace either.
+#'
+#' @param spec A list describing the distribution, in exactly the shape
+#'   documented for \code{\link{add_censoring}}'s own \code{censoring}
+#'   argument (\code{dist} one of \code{"exponential"}, \code{"weibull"},
+#'   \code{"uniform"}, \code{"lognormal"}, \code{"gamma"}, \code{"user"},
+#'   plus that distribution's own parameters).
+#' @param n Integer. Number of draws.
+#' @param seed Optional integer. If supplied, \code{set.seed(seed)} is
+#'   called before the draw (same convention as \code{\link{add_censoring}}'s
+#'   own \code{seed}).
+#' @return Numeric vector of length \code{n}, all finite and
+#'   non-negative.
+#' @seealso \code{\link{add_censoring}}, \code{\link{visit_schedule_informative}},
+#'   the two callers of this same distribution spec shape.
+#' @export
+#' @examples
+#' draw_censoring_times(list(dist = "exponential", rate = 0.05), n = 10,
+#'   seed = 1)
+draw_censoring_times <- function(spec, n, seed = NULL) {
+    if (!is.numeric(n) || length(n) != 1L || !is.finite(n) || n < 1 ||
+        n != round(n)) {
+        stop("'n' must be a positive integer scalar.", call. = FALSE)
+    }
+    if (!is.null(seed)) {
+        set.seed(seed)
+    }
+    .draw_censoring_times(spec, n)
 }
