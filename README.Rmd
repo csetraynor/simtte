@@ -234,26 +234,12 @@ result_interp <- sim_tte(
 See [Statistical Background](#statistical-background) below for what
 `"log_survival"` assumes and when it is exact rather than approximate.
 
-### Exploring Prognostic Index Effects
+### The rest of the 1.0.x API
 
-`explore_pi_tq_surv()` quantifies the survival difference at the median
-survival time across a range of log hazard ratios, which is useful for
-understanding how covariate effects translate into differences in
-survival.
-
-```{r legacy-explore, fig.alt = "Survival difference at the median versus log hazard ratio, a roughly S-shaped curve centered at zero"}
-data_sim <- explore_pi_tq_surv(
-  pi       = seq(-2, 2, by = 0.25),
-  mu       = -1,
-  shape    = 1.1,
-  type     = "weibull",
-  end_time = 100
-)
-
-plot(survdiff_tq ~ lp, data = data_sim,
-     xlab = "Log Hazard Ratio", ylab = "Survival Difference at Median",
-     main = "Effect of Prognostic Index on Median Survival")
-```
+`sim_tte()`/`sim_tte_df()` also come with `explore_pi_tq_surv()` (a
+prognostic-index/survival-difference exploration utility) and further
+Weibull/M-spline examples -- see `vignette("advanced-usage")` for the
+full walkthrough.
 
 ## Statistical Background
 
