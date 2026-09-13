@@ -6,6 +6,9 @@
 \alias{simtte-package}
 \title{simtte: Simulate Time-to-Event Data from PK/PD and Bespoke ODE Models}
 \description{
+\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width=120}}
+}
+\details{
 Simulates time-to-event (survival) datasets for clinical trial design
 and analysis, including datasets driven by a joint
 pharmacokinetic/pharmacodynamic (PK/PD) model solved via the
