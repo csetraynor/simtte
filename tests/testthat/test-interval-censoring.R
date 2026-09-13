@@ -142,17 +142,89 @@ test_that("a malformed 'visits' argument (not numeric, not a data frame) errors"
 })
 
 # ---------------------------------------------------------------------
-# 4. visit_schedule(): seeded, ordering, never negative [fast].
+# 4. visit_schedule(): seeded, bounded jitter, never crosses order
+#    [fast]. jitter/every bound: uniform needs jitter < every / 2;
+#    normal (jitter_trunc default 2) needs 2 * jitter < every / 2.
+#    every = 4 below -> bound is 2 for uniform, 1 for normal at the
+#    default jitter_trunc; 0.9 clears both.
 # ---------------------------------------------------------------------
-test_that("visit_schedule() is reproducible with the same seed", {
-    a <- visit_schedule(n = 10, every = 4, end = 20, jitter = 1.5, seed = 1)
-    b <- visit_schedule(n = 10, every = 4, end = 20, jitter = 1.5, seed = 1)
+test_that("visit_schedule() is reproducible with the same seed, for each jitter_dist", {
+    for (dist in c("uniform", "normal")) {
+        a <- visit_schedule(n = 10, every = 4, end = 20, jitter = 0.9,
+            jitter_dist = dist, seed = 1)
+        b <- visit_schedule(n = 10, every = 4, end = 20, jitter = 0.9,
+            jitter_dist = dist, seed = 1)
+        expect_identical(a, b)
+    }
+})
+
+test_that("jitter_dist = 'uniform' is visit_schedule()'s unchanged default", {
+    a <- visit_schedule(n = 10, every = 4, end = 20, jitter = 0.9, seed = 1)
+    b <- visit_schedule(n = 10, every = 4, end = 20, jitter = 0.9,
+        jitter_dist = "uniform", seed = 1)
     expect_identical(a, b)
 })
 
-test_that("visit_schedule() never produces a negative time, even with large jitter", {
-    sched <- visit_schedule(n = 50, every = 2, end = 10, jitter = 5, seed = 2)
-    expect_true(all(sched$time >= 0))
+test_that("'uniform' jitter output is byte-identical to the pre-truncation-bound implementation", {
+    # Captured from the implementation immediately before this session's
+    # jitter/every bound was added (reports/23_phase6c_report.md): since
+    # jitter = 1 < every / 2 = 2 here, the old pmax(0, .)/sort(unique(.))
+    # calls were already no-ops, so this session's simplification must
+    # reproduce the exact same draws for the same seed.
+    out <- visit_schedule(n = 5, every = 4, end = 20, jitter = 1,
+        jitter_dist = "uniform", seed = 1)
+    ref <- c(0, 3.5310173262842, 7.74424779927358, 12.1457067267038,
+        16.8164155799896, 19.4033638620749, 0, 4.79677936993539,
+        8.8893505372107, 12.3215955849737, 16.2582280877978,
+        19.1235725409351, 0, 3.4119491497986, 7.35311350505799,
+        12.3740456933156, 15.7682074364275, 20.5396828399971, 0,
+        3.99539848417044, 8.43523701652884, 12.983812189661,
+        15.7600703588687, 20.5548904426396, 0, 4.86941046221182,
+        7.42428504256532, 12.3033475321718, 15.2511101919226,
+        19.5344413374551)
+    expect_equal(out$time, ref)
+})
+
+test_that("visit_schedule() never produces a negative or unsorted time, for each jitter_dist, at the largest allowed jitter", {
+    for (dist in c("uniform", "normal")) {
+        max_jitter <- if (dist == "uniform") 1.999 else 0.999
+        sched <- visit_schedule(n = 50, every = 4, end = 20,
+            jitter = max_jitter, jitter_dist = dist, seed = 2)
+        expect_true(all(sched$time >= 0))
+        for (id in unique(sched$ID)) {
+            expect_false(is.unsorted(sched$time[sched$ID == id],
+                strictly = TRUE))
+        }
+    }
+})
+
+test_that("a jitter/jitter_trunc combination too large for 'every' errors before any draw, for each jitter_dist", {
+    expect_error(
+        visit_schedule(n = 5, every = 4, end = 20, jitter = 2,
+            jitter_dist = "uniform"),
+        "too large relative to 'every'")
+    expect_error(
+        visit_schedule(n = 5, every = 4, end = 20, jitter = 1,
+            jitter_dist = "normal"), # jitter_trunc = 2 default -> max_dev = 2
+        "too large relative to 'every'")
+    expect_error(
+        visit_schedule(n = 5, every = 4, end = 20, jitter = 0.7,
+            jitter_dist = "normal", jitter_trunc = 3), # max_dev = 2.1 >= every/2 = 2
+        "too large relative to 'every'")
+    # A jitter comfortably inside the bound never errors, for either dist.
+    expect_no_error(visit_schedule(n = 20, every = 4, end = 20,
+        jitter = 0.1, seed = 3))
+    expect_no_error(visit_schedule(n = 20, every = 4, end = 20,
+        jitter = 0.1, jitter_dist = "normal", seed = 3))
+})
+
+test_that("the reordering invariant is unreachable at the maximum allowed jitter, for each jitter_dist, at scale", {
+    for (dist in c("uniform", "normal")) {
+        max_jitter <- if (dist == "uniform") 1.999 else 0.999
+        expect_no_error(expect_no_warning(
+            visit_schedule(n = 5000, every = 4, end = 20,
+                jitter = max_jitter, jitter_dist = dist, seed = 7)))
+    }
 })
 
 test_that("visit_schedule() keeps the baseline visit at exactly 0 and stays ordered per subject", {
@@ -177,6 +249,10 @@ test_that("visit_schedule() validates its own arguments", {
     expect_error(visit_schedule(n = 5, every = 4, end = -1), "end")
     expect_error(visit_schedule(n = 5, every = 4, end = 20, jitter = -1),
         "jitter")
+    expect_error(visit_schedule(n = 5, every = 4, end = 20,
+        jitter_dist = "gaussian"), "should be one of")
+    expect_error(visit_schedule(n = 5, every = 4, end = 20,
+        jitter_trunc = -1), "jitter_trunc")
 })
 
 # ---------------------------------------------------------------------
@@ -271,6 +347,44 @@ test_that("sim_tte_ode(visits = list(every=, jitter=)) builds a schedule inside 
         seed = 9)
     expect_identical(s1$events, s2$events)
     expect_true(all(c("sim_time_left", "sim_time_right") %in% names(s1$events)))
+})
+
+test_that("sim_tte_ode(visits = list(..., jitter_dist = 'normal')) is passed through", {
+    skip_if_not_installed("mrgsolve")
+    # every = 4 -> bound is every / 2 = 2; jitter = 0.4 clears both the
+    # uniform bound (0.4 < 2) and the default jitter_trunc = 2 normal
+    # bound (2 * 0.4 = 0.8 < 2).
+    s1 <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+        n = 15, end = 20, delta = 2,
+        visits = list(every = 4, jitter = 0.4, jitter_dist = "normal"),
+        seed = 9)
+    s2 <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+        n = 15, end = 20, delta = 2,
+        visits = list(every = 4, jitter = 0.4, jitter_dist = "normal"),
+        seed = 9)
+    expect_identical(s1$events, s2$events)
+    # A different jitter_dist gives a different schedule (not a no-op).
+    s_uniform <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+        n = 15, end = 20, delta = 2,
+        visits = list(every = 4, jitter = 0.4, jitter_dist = "uniform"),
+        seed = 9)
+    expect_false(identical(s1$events, s_uniform$events))
+})
+
+test_that("sim_tte_ode(visits = list(..., jitter_trunc = )) is passed through", {
+    skip_if_not_installed("mrgsolve")
+    # jitter_trunc = 4 widens the normal truncation bound (max_dev = 4 *
+    # 0.4 = 1.6 < every / 2 = 2), still valid, and changes the draw.
+    s_default <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+        n = 15, end = 20, delta = 2,
+        visits = list(every = 4, jitter = 0.4, jitter_dist = "normal"),
+        seed = 9)
+    s_wide <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+        n = 15, end = 20, delta = 2,
+        visits = list(every = 4, jitter = 0.4, jitter_dist = "normal",
+            jitter_trunc = 4),
+        seed = 9)
+    expect_false(identical(s_default$events, s_wide$events))
 })
 
 # ---------------------------------------------------------------------

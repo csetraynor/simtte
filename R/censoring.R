@@ -261,6 +261,19 @@ censoring_rate_for <- function(times, target,
     .is_finite_scalar(x) && x > 0
 }
 
+#' Is x a single finite numeric value in [0, 1]?
+#'
+#' Shared predicate for probability arguments (\code{p_miss}/\code{p_dropout}
+#' in \code{\link{thin_visits}}, \code{p_miss_base}/\code{miss_near_event$p}
+#' in \code{\link{visit_schedule_informative}}).
+#'
+#' @param x Value to check.
+#' @return Logical scalar.
+#' @noRd
+.is_probability_scalar <- function(x) {
+    .is_finite_scalar(x) && x >= 0 && x <= 1
+}
+
 #' Coerce events to a data frame and confirm id/time/status columns exist
 #'
 #' Shared by \code{\link{add_censoring}} and
