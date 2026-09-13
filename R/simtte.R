@@ -802,6 +802,9 @@ sim_tte_df <- function(dat,
 #' @return A data frame including columns \code{lp}, \code{p11},
 #'   \code{survdiff_tq}, and model parameters.
 #'
+#' @seealso \code{\link{sim_tte}}, the closed-form engine this function
+#'   diagnoses; \code{\link{sim_tte_df}}, for the underlying
+#'   trajectory-to-event mechanism.
 #' @export
 #' @examples
 #' # Small fast example

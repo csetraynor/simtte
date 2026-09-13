@@ -315,3 +315,38 @@ test_that("censored times are distributionally consistent with the requested exp
     ks <- suppressWarnings(stats::ks.test(out$sim_time, "pexp", rate = rate))
     expect_gt(ks$p.value, 0.01)
 })
+
+# ---------------------------------------------------------------------
+# draw_censoring_times(): the exported wrapper over the same dispatcher
+# add_censoring() uses internally (public API freeze,
+# reports/27_public_api_freeze.md).
+# ---------------------------------------------------------------------
+
+test_that("draw_censoring_times() draws n finite, non-negative times", {
+    out <- draw_censoring_times(list(dist = "exponential", rate = 0.1), n = 20)
+    expect_length(out, 20)
+    expect_true(all(is.finite(out) & out >= 0))
+})
+
+test_that("draw_censoring_times() with a seed is reproducible", {
+    a <- draw_censoring_times(list(dist = "weibull", shape = 1.5, scale = 10),
+        n = 10, seed = 42)
+    b <- draw_censoring_times(list(dist = "weibull", shape = 1.5, scale = 10),
+        n = 10, seed = 42)
+    expect_identical(a, b)
+})
+
+test_that("draw_censoring_times() matches add_censoring()'s own draw for the same seed and spec", {
+    ev <- .fake_events(rep(1e6, 10), rep(1L, 10)) # event far beyond any draw
+    spec <- list(dist = "exponential", rate = 0.05)
+    via_add_censoring <- add_censoring(ev, censoring = spec, end = 1e7, seed = 7)
+    via_export <- draw_censoring_times(spec, n = 10, seed = 7)
+    expect_identical(via_add_censoring$sim_time, via_export)
+})
+
+test_that("draw_censoring_times() propagates the underlying spec/n validation errors", {
+    expect_error(draw_censoring_times(list(dist = "bogus"), n = 5),
+        "must be one of")
+    expect_error(draw_censoring_times(list(dist = "exponential", rate = 1),
+        n = 0), "positive integer scalar")
+})

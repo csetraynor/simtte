@@ -23,10 +23,21 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   disposition). Each reuses an unedited `mrgsolve::modlib()` PK/PD
   backbone plus a hazard link; dosing is ordinary `mrgsolve` event data
   via `sim_tte_ode()`'s `data` argument.
-* **Time-varying covariates for `sim_tte_ode()`** (`covariates`/`beta`):
-  an arbitrary named set of log-linear covariates, `lp(t) = sum_k
-  beta_k * X_k(t)`, generalizing `sim_tte()`'s single-covariate
-  `lp_data` mechanism.
+* **Covariates and the linear predictor for `sim_tte_ode()`**
+  (`covariates`/`beta`, optionally `formula`): an arbitrary named set
+  of log-linear covariates, `lp(t) = sum_k beta_k * X_k(t)`,
+  generalizing `sim_tte()`'s single-covariate `lp_data` mechanism.
+  Supplying `formula` (e.g. `~ age + arm`) builds the design matrix `X`
+  with `stats::model.matrix()` instead of using `covariates`' raw
+  columns directly, so factor coding, interactions, and any term linear
+  in `beta` (`I(age^2)`, `log(dose)`, `splines::ns(weight, 3)`) are
+  supported; `beta`'s names must then match the design matrix's
+  columns. `covariates` may be baseline (one row per subject, no `time`
+  column) or time-varying, with either form of `beta`. An implied
+  intercept is dropped automatically (with a message), matching
+  `survival::coxph()`'s own convention, since the model's own baseline
+  hazard parameter already plays that role. `formula = NULL` (the
+  default) preserves the original interface exactly.
 * **Between-subject variability (`omega`) for the PK/PD hazard
   library**: a log-normal draw on any subset of a model's own
   structural PK/PD parameters, applied via per-subject `idata` columns
@@ -61,8 +72,7 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   `censoring` argument supplied (`"event"`/`"administrative"`) --
   `sim_status`/`sim_time` are unaffected either way. Dependent/informative
   censoring (a censoring hazard driven by a subject's own simulated
-  PK/PD state) is out of scope for this release; see
-  `reports/16_censoring_design.md` for why and what it would take.
+  PK/PD state) is out of scope for this release.
 * **`add_interval_censoring()`: interval censoring** from a visit/
   assessment-time schedule, on top of any already-simulated (and, if
   used, already right-censored) events data frame. An event is only
@@ -86,8 +96,8 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   *is* a left-censored observation, with no separate mechanism needed
   (see `?add_interval_censoring` and the vignette's "Left censoring"
   subsection). A visit-process model reacting to a subject's own
-  simulated state (`reports/18_interval_censoring_design.md`'s deferred
-  option; "C3" below) is still out of scope.
+  simulated PK/PD state, rather than the exact event time, is still out
+  of scope (see "C3" below).
 * **`visit_schedule()`'s `jitter_dist = "normal"` is now a *truncated*
   normal**, truncated at `+/- jitter_trunc * jitter` (new argument,
   default `2`), drawn via inverse-CDF. Both `jitter_dist` options are
@@ -127,8 +137,7 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   every call. See the vignette's "Informative assessment schedules"
   subsection for a worked bias demonstration against `thin_visits()`.
   A third generator reacting to a subject's own PK/PD trajectory ("C3")
-  was evaluated and deferred; see
-  `reports/20_visit_process_evaluation.md`.
+  was evaluated and deferred to a later version.
 
 ## Improvements
 
@@ -244,36 +253,43 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   of `mrgsolve::mvgauss()`'s BSV draw to intervening ordinary RNG draws)
   is documented the same way.
 
+## Public API additions
+
+* **`sim_tte_ode_models()`**: lists every built-in library model name
+  accepted by `sim_tte_ode(model = ...)`, together with each model's
+  valid `omega` targets -- for building a scenario over `model`
+  programmatically instead of hardcoding the name list. Mirrors the
+  existing `simtte_example_models()`.
+* **`draw_censoring_times(spec, n, seed = NULL)`**: draws directly from
+  an `add_censoring()`-shaped distribution spec, with no `events` data
+  frame required -- the same dispatcher `add_censoring()` and
+  `visit_schedule_informative()`'s `extra_visit_after_event` already
+  share internally, now usable standalone.
+* **Covariate baseline-shape rule refined**: a `covariates` frame with
+  no `time` and no `ID` column now recycles a single row to every
+  subject (a population-level constant) or, with more than one row,
+  defines the subject count directly (`n` inferred when left at its
+  default, checked for an exact match otherwise). A `formula` with no
+  intercept that expands a factor to all its levels (R's own
+  `model.matrix()` convention for the first such factor) now names it
+  in a `message()`.
+
 ## Internal
 
-* Test runbook (`reports/07_test_runbook.md`), targeted test groups and
-  a fast/slow split (`dev/run-tests.R`), and a `Makefile` for common
-  development tasks -- none shipped in the built package
-  (`.Rbuildignore`d).
-* Extensive validation scripts under `inst/validation/` (also
-  `.Rbuildignore`d, not part of the built package): closed-form
-  correctness, grid convergence, PK/PD mechanism checks, in-solver
-  boundary-guard/refinement accuracy, M-spline convention equivalence,
-  and a CRAN-1.0.2 backward-compatibility audit.
-* Added several hundred new tests across the legacy and new APIs (see
-  `reports/07_test_runbook.md` for current counts and the fast/slow
-  split).
-* Pre-Phase-7 whole-package review (`reports/24_pre_phase7_review.md`):
-  `sim_tte()`'s own input validation now uses `call. = FALSE`
-  consistently with every other exported function; `?sim_tte_ode` is
-  reordered into one coherent reading order (mechanism, models, inputs,
-  BSV, censoring, reproducibility); `weibull_ode.cpp`/`gompertz_ode.cpp`
-  gained the same scaffold marker comments every other library model
-  already had, plus a new test asserting the survival scaffold is
-  byte-identical across all 12 shipped ODE library models; a shared
-  `.fake_events()` test fixture replaces three identical copies;
-  `inst/WORDLIST` added for `devtools::spell_check()`; `.gitignore`
-  lost a dead pattern and gained explicit exceptions for `NEWS.md`/
-  `README.md`/`cran-comments.md`; `.Rbuildignore` dropped 15 entries for
-  files that no longer exist (a pre-`reports/`-era filename list and
-  unused CI/doc-tool boilerplate). No exported function's behavior
-  changed as a result of this review (verified against
-  `inst/validation/13_backcompat_v1_0_2.R` and the full test suite).
+* Extensive validation scripts (closed-form correctness, grid
+  convergence, PK/PD mechanism checks, in-solver boundary-guard/
+  refinement accuracy, M-spline convention equivalence, and a full
+  CRAN-1.0.2 backward-compatibility audit) and a targeted, fast/slow-split
+  test suite of several hundred tests across the legacy and new APIs.
+  Neither ships in the built package.
+* A whole-package review pass: `sim_tte()`'s own input validation uses
+  `call. = FALSE` consistently with every other exported function;
+  `?sim_tte_ode` reads in one coherent order (mechanism, models,
+  inputs, BSV, censoring, reproducibility); every shipped ODE library
+  model's survival scaffold is now verified byte-identical by a
+  permanent test; `inst/WORDLIST` added for `devtools::spell_check()`.
+  No exported function's behavior changed as a result (verified against
+  the backward-compatibility audit and the full test suite).
 
 # simtte 1.0.2
 

@@ -53,3 +53,7 @@ this function.
 \examples{
 simtte_example_models()
 }
+\seealso{
+\code{\link{simtte_example_model}}, to load one;
+  \code{\link{sim_tte_df}}, the function these models are for.
+}

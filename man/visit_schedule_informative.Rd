@@ -77,8 +77,7 @@ A data frame with \code{ID}/\code{time} columns -- directly
 }
 \description{
 Layers visit-process randomness that \strong{reacts to the simulated
-event time} on top of a fixed visit schedule
-(\code{reports/20_visit_process_evaluation.md} "C2"): a scheduled
+event time} on top of a fixed visit schedule: a scheduled
 visit shortly before a subject's event may be missed at an elevated
 rate (\code{miss_near_event}, e.g. "too unwell to attend"), and/or an
 unscheduled extra visit may be added shortly after it

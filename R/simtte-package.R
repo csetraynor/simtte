@@ -13,12 +13,26 @@
 #' watched for the first internal evaluation at which \code{p11} falls
 #' to or below a per-subject uniform draw. Six built-in library models
 #' (\code{"pk_hazard"}, \code{"irm1_hazard"}--\code{"irm4_hazard"},
-#' \code{"tmdd_hazard"}) cover common PK/PD structures out of the box;
+#' \code{"tmdd_hazard"}; \code{\link{sim_tte_ode_models}} lists all of
+#' them) cover common PK/PD structures out of the box. See
+#' \code{vignette("pkpd-time-to-event", package = "simtte")} for a full
+#' walkthrough.
+#'
+#' @section Bring your own PK/PD model:
 #' \code{\link{tte_model}} converts any user-supplied \pkg{mrgsolve}
-#' model (one with an \code{$ODE}/\code{$DES} block) into one usable the
-#' same way. See \code{vignette("pkpd-time-to-event", package = "simtte")}
-#' for a full walkthrough (dosing, covariates, between-subject
-#' variability, and converting a user model).
+#' model (one with an \code{$ODE}/\code{$DES} block) into one usable by
+#' \code{\link{sim_tte_ode}} the same way as a built-in model, including
+#' coexistence with a model's own declared \code{$OMEGA} block. See
+#' \code{vignette("bring-your-own-model", package = "simtte")}.
+#'
+#' @section Covariates, the linear predictor, and between-subject variability:
+#' \code{\link{sim_tte_ode}}'s \code{covariates}/\code{beta} (optionally
+#' \code{formula}, built into a design matrix via
+#' \code{\link[stats]{model.matrix}}) add a linear predictor
+#' \code{lp(t) = X(t) \%*\% beta} to any model; \code{omega} adds
+#' log-normal between-subject variability on a model's own structural
+#' PK/PD parameters. See \code{vignette("pkpd-time-to-event", package =
+#' "simtte")}.
 #'
 #' @section Bespoke parametric/flexible hazard simulation:
 #' \code{\link{sim_tte}}/\code{\link{sim_tte_df}} are the original API: a
@@ -38,18 +52,24 @@
 #' uniform, lognormal, gamma, or user-supplied distribution, with the
 #' observed time becoming \code{min(event time, censoring time,
 #' administrative end)}. \code{\link{censoring_rate_for}} solves for the
-#' distribution parameter giving a target censoring fraction.
-#' \code{\link{sim_tte_ode}} also accepts a \code{censoring} argument
-#' that applies this automatically, inside its own seeded draw.
+#' distribution parameter giving a target censoring fraction;
+#' \code{\link{draw_censoring_times}} draws from the same kind of spec
+#' directly. \code{\link{sim_tte_ode}} also accepts a \code{censoring}
+#' argument that applies this automatically, inside its own seeded draw.
+#' See \code{vignette("censoring-and-assessment", package = "simtte")}.
 #'
-#' @section Interval censoring:
+#' @section Interval censoring and visit schedules:
 #' \code{\link{add_interval_censoring}} maps an already-simulated (and,
 #' if applicable, already right-censored) outcome onto an interval
 #' \code{(L, R]}, given a visit/assessment-time schedule --
 #' \code{\link{visit_schedule}} builds one with fixed spacing and
-#' optional per-subject jitter. \code{\link{sim_tte_ode}} also accepts a
-#' \code{visits} argument that applies this automatically, always after
-#' any \code{censoring}.
+#' optional per-subject jitter, \code{\link{thin_visits}} layers
+#' non-informative missed visits/dropout on top, and
+#' \code{\link{visit_schedule_informative}} layers a visit process that
+#' reacts to the simulated outcome. \code{\link{sim_tte_ode}} also
+#' accepts a \code{visits} argument that applies interval censoring
+#' automatically, always after any \code{censoring}. See
+#' \code{vignette("censoring-and-assessment", package = "simtte")}.
 #'
 #' @section Full \pkg{mrgsolve} import:
 #' Not narrowed to \code{importFrom()}: \pkg{mrgsolve} defines several
@@ -65,7 +85,7 @@
 #' \code{sim_tte_df()} call) -- a full \code{import()} is what makes a
 #' dependency's S4 methods on base generics reliably dispatchable from
 #' the importing package's own code, not just its exported function
-#' names, so it is kept (Phase 5b, `reports/15_phase5b_report.md`).
+#' names, so it is kept.
 #'
 #' @references
 #' Bender R, Augustin T, Blettner M (2005). Generating survival times to

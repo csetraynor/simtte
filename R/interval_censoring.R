@@ -2,8 +2,7 @@
 #'
 #' Adds interval-censoring bounds to an already-simulated (and, if
 #' applicable, already right-censored -- see "Ordering" below) events
-#' data frame, the mechanism described in
-#' \code{reports/18_interval_censoring_design.md} (option A): given a
+#' data frame: given a
 #' visit schedule, an event known to have occurred exactly at
 #' \code{sim_time} is only \emph{detectable} at the first visit at or
 #' after it, and a censored subject is only known event-free through
@@ -247,10 +246,9 @@ visit_schedule <- function(n, every, end, jitter = 0,
 #'
 #' Layers schedule-only randomness on top of a fixed visit schedule --
 #' no simulated outcome is read, so this is the "safe", always-
-#' non-informative member of the visit-process generators
-#' (\code{reports/20_visit_process_evaluation.md} "C1"; contrast with
-#' \code{\link{visit_schedule_informative}}, which reads the simulated
-#' outcome by design). Each non-baseline visit is independently missed
+#' non-informative member of the visit-process generators (contrast
+#' with \code{\link{visit_schedule_informative}}, which reads the
+#' simulated outcome by design). Each non-baseline visit is independently missed
 #' with probability \code{p_miss}; independently of that, each subject
 #' may also start dropping out: with probability \code{p_dropout}, one
 #' of their non-baseline visits is chosen uniformly at random as the
@@ -343,8 +341,7 @@ thin_visits <- function(visits, p_miss = 0, p_dropout = 0, ids = NULL,
 #' Generate an outcome-informative visit schedule (C2)
 #'
 #' Layers visit-process randomness that \strong{reacts to the simulated
-#' event time} on top of a fixed visit schedule
-#' (\code{reports/20_visit_process_evaluation.md} "C2"): a scheduled
+#' event time} on top of a fixed visit schedule: a scheduled
 #' visit shortly before a subject's event may be missed at an elevated
 #' rate (\code{miss_near_event}, e.g. "too unwell to attend"), and/or an
 #' unscheduled extra visit may be added shortly after it

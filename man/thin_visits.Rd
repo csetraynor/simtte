@@ -39,10 +39,9 @@ A data frame with \code{ID}/\code{time} columns -- a
 \description{
 Layers schedule-only randomness on top of a fixed visit schedule --
 no simulated outcome is read, so this is the "safe", always-
-non-informative member of the visit-process generators
-(\code{reports/20_visit_process_evaluation.md} "C1"; contrast with
-\code{\link{visit_schedule_informative}}, which reads the simulated
-outcome by design). Each non-baseline visit is independently missed
+non-informative member of the visit-process generators (contrast
+with \code{\link{visit_schedule_informative}}, which reads the
+simulated outcome by design). Each non-baseline visit is independently missed
 with probability \code{p_miss}; independently of that, each subject
 may also start dropping out: with probability \code{p_dropout}, one
 of their non-baseline visits is chosen uniformly at random as the

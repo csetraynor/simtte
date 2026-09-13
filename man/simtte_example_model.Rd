@@ -54,3 +54,7 @@ sim_tte_df(out[, c("ID", "time", "p11")])
 mod <- simtte_example_model("pkpd_linear_hazard")
 }
 }
+\seealso{
+\code{\link{simtte_example_models}}, to list available names;
+  \code{\link{sim_tte_df}}, the function these models are for.
+}
