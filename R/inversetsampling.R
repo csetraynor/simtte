@@ -90,7 +90,7 @@
         outdata <- dplyr::tibble(time = eventtime, status = 0,
             ID = id)
     }
-    return(outdata)
+    outdata
 }
 
 #' Interpolate an event time linearly in cumulative hazard

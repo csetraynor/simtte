@@ -240,26 +240,29 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
     event_time_method <- match.arg(event_time_method)
 
     if (!is.numeric(pi)) {
-        stop("'pi' must be numeric.")
+        stop("'pi' must be numeric.", call. = FALSE)
     }
     if (length(pi) < 1L) {
         stop("'pi' must contain at least one individual (empty cohorts ",
-            "are not allowed).")
+            "are not allowed).", call. = FALSE)
     }
     if (any(!is.finite(pi))) {
-        stop("'pi' must not contain NA, NaN, Inf, or -Inf values.")
+        stop("'pi' must not contain NA, NaN, Inf, or -Inf values.",
+            call. = FALSE)
     }
     if (!is.numeric(mu) || length(mu) != 1L) {
-        stop("'mu' must be a numeric scalar.")
+        stop("'mu' must be a numeric scalar.", call. = FALSE)
     }
     if (!is.finite(mu)) {
-        stop("'mu' must be finite (not NA, NaN, Inf, or -Inf).")
+        stop("'mu' must be finite (not NA, NaN, Inf, or -Inf).",
+            call. = FALSE)
     }
     if (!is.numeric(coefs)) {
-        stop("'coefs' must be numeric.")
+        stop("'coefs' must be numeric.", call. = FALSE)
     }
     if (any(!is.finite(coefs))) {
-        stop("'coefs' must not contain NA, NaN, Inf, or -Inf values.")
+        stop("'coefs' must not contain NA, NaN, Inf, or -Inf values.",
+            call. = FALSE)
     }
     .validate_time_grid(time, arg = "time")
     if (!missing(end_time)) {
@@ -271,36 +274,41 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 
     if (type == "ms") {
         if (is.null(basis)) {
-            stop("'basis' must be provided for M-spline models.")
+            stop("'basis' must be provided for M-spline models.",
+                call. = FALSE)
         }
         if (!is.matrix(basis) || !is.numeric(basis)) {
-            stop("'basis' must be a numeric matrix.")
+            stop("'basis' must be a numeric matrix.", call. = FALSE)
         }
         if (ncol(basis) != length(coefs)) {
-            stop("Basis columns and coefficients must have the same length.")
+            stop("Basis columns and coefficients must have the same length.",
+                call. = FALSE)
         }
         if (nrow(basis) != length(time)) {
             stop("'basis' must have one row per element of 'time' ",
                 "(nrow(basis) = ", nrow(basis), ", length(time) = ",
-                length(time), ").")
+                length(time), ").", call. = FALSE)
         }
         if (any(!is.finite(basis))) {
-            stop("'basis' must not contain NA, NaN, Inf, or -Inf values.")
+            stop("'basis' must not contain NA, NaN, Inf, or -Inf values.",
+                call. = FALSE)
         }
         basehaz <- basis %*% coefs
     }
     if (type == "weibull") {
         if (length(coefs) != 1L) {
-            stop("Only 1 coefficient (shape) allowed for the Weibull model.")
+            stop("Only 1 coefficient (shape) allowed for the Weibull model.",
+                call. = FALSE)
         }
         if (coefs <= 0) {
-            stop("Weibull shape parameter must be positive.")
+            stop("Weibull shape parameter must be positive.", call. = FALSE)
         }
         shape <- coefs
     }
     if (!log_pi) {
         if (any(pi <= 0)) {
-            stop("All prognostic index values must be positive for log transform.")
+            stop("All prognostic index values must be positive for log transform.",
+                call. = FALSE)
         }
         pi <- log(pi)
     }
@@ -322,9 +330,8 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
         type = type, shape = shape, times = time, end_time = end_time,
         lp_data = lp_canonical, ...)
     xdata <- data.frame(ID = seq_along(pi), lp = pi)
-    dat <- sim_tte_df(data_sim, id_var = "ID", xdata = xdata,
+    sim_tte_df(data_sim, id_var = "ID", xdata = xdata,
         event_time_method = event_time_method)
-    return(dat)
 }
 
 #' Simulate Time-to-Event Data from a Custom mrgsolve Output
@@ -675,19 +682,19 @@ sim_tte_df <- function(dat,
         if (type == "weibull") {
             ev1 <- as.data.frame(expand.grid(shape, log_hr))
             colnames(ev1) <- c("shape", "lp")
-            data_surv <- ev1 %>% dplyr::mutate(
+            data_surv <- dplyr::mutate(ev1,
                 ID = seq_len(nrow(ev1)), cmt = 0,
                 amt = 0, evid = 1, time = 0, mu = mu,
                 basehaz_id = as.numeric(as.factor(shape)))
         } else {
             basehaz_id <- rep(seq_len(ncol(basehaz)), each = nrow(basehaz))
-            ev1 <- expand.grid(c(basehaz), log_hr) %>% as.data.frame()
+            ev1 <- as.data.frame(expand.grid(c(basehaz), log_hr))
             ev1$basehaz_id <- rep(basehaz_id, length(log_hr))
             colnames(ev1) <- c("basehaz", "lp", "basehaz_id")
             ev1$time <- c(rep(times, ncol(basehaz) * length(log_hr)))
             ev1$ID <- c(rep(seq_len(ncol(basehaz) * length(log_hr)),
                 each = nrow(basehaz)))
-            data_surv <- ev1 %>% dplyr::mutate(cmt = 1, amt = 0, evid = 1,
+            data_surv <- dplyr::mutate(ev1, cmt = 1, amt = 0, evid = 1,
                 mu = mu)
         }
         out <- mrgsolve::mrgsim(
@@ -715,7 +722,7 @@ sim_tte_df <- function(dat,
         # 'grid' before returning, so the public output-grid contract
         # (?sim_tte "Time grid and event-time resolution") is unchanged.
         mod_surv <- .read_model_static_cache("weibull_tv")
-        data_surv <- lp_data %>% dplyr::mutate(cmt = 0, amt = 0,
+        data_surv <- dplyr::mutate(lp_data, cmt = 0, amt = 0,
             evid = 1, mu = mu, shape = shape)
         internal_grid <- .resolve_output_grid(c(times, lp_data$time),
             end_time, "weibull")

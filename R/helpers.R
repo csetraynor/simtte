@@ -57,9 +57,9 @@
             project = pkg_model_file)
     } else {
         stop("Model '", model, "' must be 'ms', 'weibull', or ",
-            "'weibull_tv'.")
+            "'weibull_tv'.", call. = FALSE)
     }
-    return(mod_surv)
+    mod_surv
 }
 
 #' Validate a numeric simulation time grid
@@ -984,10 +984,10 @@
             "omat()/smat() only update an already-declared block, they ",
             "do not create one from nothing, and none of the built-in ",
             "sim_tte_ode() library models declares one as of this ",
-            "release (reports/10_phase4_report.md). '", arg, "' is only ",
-            "usable with a model you supply yourself that already ",
-            "declares a $", toupper(arg), " block of the same dimension.",
-            call. = FALSE)
+            "release (see ?sim_tte_ode \"Between-subject variability\"). ",
+            "'", arg, "' is only usable with a model you supply yourself ",
+            "that already declares a $", toupper(arg), " block of the ",
+            "same dimension.", call. = FALSE)
     })
 }
 
@@ -1404,10 +1404,10 @@
         if (is.finite(shape) && shape < 0.05) {
             message("sim_tte_ode(): Weibull 'shape' = ", shape, " is ",
                 "below 0.05; the in-solver mechanism's accuracy near ",
-                "t = 0 degrades below this threshold ",
-                "(reports/06_phase2_report.md risk R1). The simulation ",
-                "proceeds unchanged; if exactness near t = 0 matters ",
-                "more, use sim_tte(type = \"weibull\") instead.")
+                "t = 0 degrades below this threshold (see ?sim_tte_ode ",
+                "\"Weibull shape support\"). The simulation proceeds ",
+                "unchanged; if exactness near t = 0 matters more, use ",
+                "sim_tte(type = \"weibull\") instead.")
         }
     }
     invisible(NULL)

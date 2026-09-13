@@ -5,7 +5,7 @@
 \title{Generate an outcome-informative visit schedule (C2)}
 \usage{
 visit_schedule_informative(
-  schedule,
+  visits,
   events,
   end,
   miss_near_event = NULL,
@@ -18,7 +18,7 @@ visit_schedule_informative(
 )
 }
 \arguments{
-\item{schedule}{A per-subject schedule (data frame with \code{ID}/
+\item{visits}{A per-subject schedule (data frame with \code{ID}/
 \code{time}), or a common numeric vector (expanded per subject
 using \code{events[[id_var]]} -- no separate \code{ids} argument
 needed here, unlike \code{\link{thin_visits}}, since \code{events}
@@ -38,9 +38,13 @@ dropped, not added -- the same administrative horizon
 \code{list(window = <positive scalar>, p = <scalar in [0, 1]>)}.
 For an event subject (\code{sim_status == 1}), a scheduled visit
 \code{v} with \code{t - window <= v < t} (\code{t} the event time)
-is missed with probability \code{p} instead of \code{p_miss_base}.
-Has no effect on a censored subject, or on a visit outside the
-window.}
+is missed with probability \code{1 - (1 - p_miss_base) * (1 - p)}
+-- \code{p_miss_base}'s background miss chance and \code{p}'s
+near-event miss chance are independent, competing risks, so they
+add rather than one overriding the other (this collapses exactly
+to \code{p} when \code{p_miss_base = 0}, the common case). Has no
+effect on a censored subject, or on a visit outside the window --
+both use \code{p_miss_base} alone.}
 
 \item{extra_visit_after_event}{\code{NULL} (default, no effect), or a
 distribution spec in \code{\link{add_censoring}}'s \code{censoring}

@@ -59,6 +59,12 @@ Model file:  weibull_ode.cpp
   p11 = 1
 
 [GLOBAL]
+  // -- BEGIN simtte survival scaffolding -----------------------------
+  // General-purpose in-solver event-detection scaffolding, identical
+  // in every library model this package ships; see exponential_ode.cpp
+  // for the full rationale comment (kept there only, to avoid repeating
+  // it verbatim in every file). T_FLOOR just below is this model's own
+  // addition, not part of the shared scaffold.
   static int    event_found = 0;
   static double TEVT        = 0.0;
   // Evidenced floor on the time value used *only* inside the hazard
@@ -102,6 +108,7 @@ Model file:  weibull_ode.cpp
     TEVT = SOLVERTIME;
     P_POST = p11;
   }
+  // -- END simtte survival scaffolding (ODE half) --------------------
 
 [CAPTURE] @annotated
   TEVT        : Latched in-solver event time (SOLVERTIME at first p11 <= U), or 0 if not yet found

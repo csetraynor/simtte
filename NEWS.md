@@ -100,21 +100,29 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   invariant for either built-in distribution). `"uniform"` output/seeds
   are unchanged from the previous session; `"normal"` output/seeds
   change (the draw mechanism itself changed to truncated inverse-CDF).
-* **`thin_visits()`: missed visits and assessment dropout ("C1")** on
-  top of a visit schedule -- reads no simulated outcome, so it can
+* **`thin_visits(visits, ...)`: missed visits and assessment dropout
+  ("C1")** on top of a visit schedule (the `visits` argument -- the
+  same schedule shape and name `add_interval_censoring()`/
+  `sim_tte_ode()` already use) -- reads no simulated outcome, so it can
   never make an assessment schedule informative. Each non-baseline
   visit is independently missed with probability `p_miss`; each subject
   may independently start dropping out from a randomly chosen
   non-baseline visit onward with probability `p_dropout`. Composes with
   `add_censoring()` in either order; must run before
   `add_interval_censoring()`.
-* **`visit_schedule_informative()`: an outcome-reactive visit schedule
-  ("C2")** -- unlike `thin_visits()`, this reads `$events` and lets
-  visit attendance/timing react to the simulated event time
+* **`visit_schedule_informative(visits, events, ...)`: an outcome-
+  reactive visit schedule ("C2")** -- unlike `thin_visits()`, this reads
+  `$events` and lets visit attendance/timing react to the simulated
+  event time
   (`miss_near_event`: a visit shortly before an event is missed at an
   elevated rate; `extra_visit_after_event`: an unscheduled visit is
   added shortly after an event, using the same distribution spec shape
-  as `add_censoring()`'s `censoring`). This makes the returned schedule
+  as `add_censoring()`'s `censoring`). `miss_near_event$p` and
+  `p_miss_base` are **additive/competing risks, not one overriding the
+  other**: a near-window visit for an event subject is missed with
+  probability `1 - (1 - p_miss_base) * (1 - p)` (collapses exactly to
+  `p` when `p_miss_base = 0`) -- pre-release seeds for a call combining
+  both changed accordingly. This makes the returned schedule
   informative by construction; a `message()` naming this is emitted on
   every call. See the vignette's "Informative assessment schedules"
   subsection for a worked bias demonstration against `thin_visits()`.
@@ -250,6 +258,22 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
 * Added several hundred new tests across the legacy and new APIs (see
   `reports/07_test_runbook.md` for current counts and the fast/slow
   split).
+* Pre-Phase-7 whole-package review (`reports/24_pre_phase7_review.md`):
+  `sim_tte()`'s own input validation now uses `call. = FALSE`
+  consistently with every other exported function; `?sim_tte_ode` is
+  reordered into one coherent reading order (mechanism, models, inputs,
+  BSV, censoring, reproducibility); `weibull_ode.cpp`/`gompertz_ode.cpp`
+  gained the same scaffold marker comments every other library model
+  already had, plus a new test asserting the survival scaffold is
+  byte-identical across all 12 shipped ODE library models; a shared
+  `.fake_events()` test fixture replaces three identical copies;
+  `inst/WORDLIST` added for `devtools::spell_check()`; `.gitignore`
+  lost a dead pattern and gained explicit exceptions for `NEWS.md`/
+  `README.md`/`cran-comments.md`; `.Rbuildignore` dropped 15 entries for
+  files that no longer exist (a pre-`reports/`-era filename list and
+  unused CI/doc-tool boilerplate). No exported function's behavior
+  changed as a result of this review (verified against
+  `inst/validation/13_backcompat_v1_0_2.R` and the full test suite).
 
 # simtte 1.0.2
 

@@ -14,7 +14,9 @@ inst/doc
 .Rcheck/
 *.md
 !STATUS.md
+!NEWS.md
+!README.md
+!cran-comments.md
 .DS_Store
-^dev$
 Makefile
 /simtte-manuscript-submission/

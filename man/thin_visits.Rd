@@ -4,10 +4,10 @@
 \alias{thin_visits}
 \title{Thin a visit schedule with missed visits and dropout (C1)}
 \usage{
-thin_visits(schedule, p_miss = 0, p_dropout = 0, ids = NULL, seed = NULL)
+thin_visits(visits, p_miss = 0, p_dropout = 0, ids = NULL, seed = NULL)
 }
 \arguments{
-\item{schedule}{A per-subject schedule (a data frame with \code{ID}/
+\item{visits}{A per-subject schedule (a data frame with \code{ID}/
 \code{time} columns, e.g. from \code{\link{visit_schedule}}), or a
 common numeric vector -- in which case \code{ids} is required, and
 the vector is expanded to one copy per ID first (via the same
@@ -15,12 +15,12 @@ internal validation \code{\link{add_interval_censoring}} itself
 uses).}
 
 \item{p_miss, p_dropout}{Numeric scalars in \code{[0, 1]}, default
-\code{0} (no thinning; \code{schedule} is returned as given). The
+\code{0} (no thinning; \code{visits} is returned as given). The
 dropout-onset visit is drawn from the subject's \emph{original}
 non-baseline visits, independently of any \code{p_miss} draws for
 that subject.}
 
-\item{ids}{Required only when \code{schedule} is a numeric vector;
+\item{ids}{Required only when \code{visits} is a numeric vector;
 the subject IDs to expand it across (e.g. \code{events$ID}).}
 
 \item{seed}{Optional integer. If supplied, \code{set.seed(seed)} is

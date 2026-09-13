@@ -257,18 +257,18 @@ visit_schedule <- function(n, every, end, jitter = 0,
 #' dropout onset, and it and every later visit is dropped. The baseline
 #' visit (\code{time = 0}) is never dropped by either mechanism.
 #'
-#' @param schedule A per-subject schedule (a data frame with \code{ID}/
+#' @param visits A per-subject schedule (a data frame with \code{ID}/
 #'   \code{time} columns, e.g. from \code{\link{visit_schedule}}), or a
 #'   common numeric vector -- in which case \code{ids} is required, and
 #'   the vector is expanded to one copy per ID first (via the same
 #'   internal validation \code{\link{add_interval_censoring}} itself
 #'   uses).
 #' @param p_miss,p_dropout Numeric scalars in \code{[0, 1]}, default
-#'   \code{0} (no thinning; \code{schedule} is returned as given). The
+#'   \code{0} (no thinning; \code{visits} is returned as given). The
 #'   dropout-onset visit is drawn from the subject's \emph{original}
 #'   non-baseline visits, independently of any \code{p_miss} draws for
 #'   that subject.
-#' @param ids Required only when \code{schedule} is a numeric vector;
+#' @param ids Required only when \code{visits} is a numeric vector;
 #'   the subject IDs to expand it across (e.g. \code{events$ID}).
 #' @param seed Optional integer. If supplied, \code{set.seed(seed)} is
 #'   called before any draw. Leave \code{NULL} inside a larger
@@ -288,7 +288,7 @@ visit_schedule <- function(n, every, end, jitter = 0,
 #' sched <- visit_schedule(n = 20, every = 4, end = 24, seed = 1)
 #' thinned <- thin_visits(sched, p_miss = 0.1, p_dropout = 0.05, seed = 2)
 #' nrow(thinned) <= nrow(sched)
-thin_visits <- function(schedule, p_miss = 0, p_dropout = 0, ids = NULL,
+thin_visits <- function(visits, p_miss = 0, p_dropout = 0, ids = NULL,
     seed = NULL) {
     if (!.is_probability_scalar(p_miss)) {
         stop("'p_miss' must be a numeric scalar in [0, 1].", call. = FALSE)
@@ -296,31 +296,31 @@ thin_visits <- function(schedule, p_miss = 0, p_dropout = 0, ids = NULL,
     if (!.is_probability_scalar(p_dropout)) {
         stop("'p_dropout' must be a numeric scalar in [0, 1].", call. = FALSE)
     }
-    if (is.numeric(schedule)) {
+    if (is.numeric(visits)) {
         if (is.null(ids)) {
-            stop("'ids' is required when 'schedule' is a numeric vector ",
+            stop("'ids' is required when 'visits' is a numeric vector ",
                 "(the common schedule is expanded per subject); see ",
                 "?thin_visits.", call. = FALSE)
         }
-        sched_list <- .normalize_visit_schedule(schedule, ids)
-        schedule <- dplyr::bind_rows(lapply(seq_along(ids), function(i) {
+        sched_list <- .normalize_visit_schedule(visits, ids)
+        visits <- dplyr::bind_rows(lapply(seq_along(ids), function(i) {
             data.frame(ID = ids[i], time = sched_list[[as.character(ids[i])]])
         }))
-    } else if (!is.data.frame(schedule) ||
-        !all(c("ID", "time") %in% names(schedule))) {
-        stop("'schedule' must be a numeric vector (a common schedule, ",
+    } else if (!is.data.frame(visits) ||
+        !all(c("ID", "time") %in% names(visits))) {
+        stop("'visits' must be a numeric vector (a common schedule, ",
             "with 'ids') or a data frame with 'ID'/'time' columns (a ",
             "per-subject schedule).", call. = FALSE)
     }
     if (p_miss == 0 && p_dropout == 0) {
-        return(schedule)
+        return(visits)
     }
     if (!is.null(seed)) {
         set.seed(seed)
     }
-    subj_ids <- unique(schedule$ID)
+    subj_ids <- unique(visits$ID)
     rows <- lapply(subj_ids, function(id) {
-        v <- schedule$time[schedule$ID == id]
+        v <- visits$time[visits$ID == id]
         .validate_visit_vector(v)
         non_baseline <- seq_along(v)[-1]
         keep <- rep(TRUE, length(v))
@@ -366,7 +366,7 @@ thin_visits <- function(schedule, p_miss = 0, p_dropout = 0, ids = NULL,
 #' section does), not as a drop-in, general-purpose visit generator. A
 #' \code{message()} naming this is emitted on every call.
 #'
-#' @param schedule A per-subject schedule (data frame with \code{ID}/
+#' @param visits A per-subject schedule (data frame with \code{ID}/
 #'   \code{time}), or a common numeric vector (expanded per subject
 #'   using \code{events[[id_var]]} -- no separate \code{ids} argument
 #'   needed here, unlike \code{\link{thin_visits}}, since \code{events}
@@ -383,9 +383,13 @@ thin_visits <- function(schedule, p_miss = 0, p_dropout = 0, ids = NULL,
 #'   \code{list(window = <positive scalar>, p = <scalar in [0, 1]>)}.
 #'   For an event subject (\code{sim_status == 1}), a scheduled visit
 #'   \code{v} with \code{t - window <= v < t} (\code{t} the event time)
-#'   is missed with probability \code{p} instead of \code{p_miss_base}.
-#'   Has no effect on a censored subject, or on a visit outside the
-#'   window.
+#'   is missed with probability \code{1 - (1 - p_miss_base) * (1 - p)}
+#'   -- \code{p_miss_base}'s background miss chance and \code{p}'s
+#'   near-event miss chance are independent, competing risks, so they
+#'   add rather than one overriding the other (this collapses exactly
+#'   to \code{p} when \code{p_miss_base = 0}, the common case). Has no
+#'   effect on a censored subject, or on a visit outside the window --
+#'   both use \code{p_miss_base} alone.
 #' @param extra_visit_after_event \code{NULL} (default, no effect), or a
 #'   distribution spec in \code{\link{add_censoring}}'s \code{censoring}
 #'   shape (\code{list(dist = "exponential", rate = ...)},
@@ -434,7 +438,7 @@ thin_visits <- function(schedule, p_miss = 0, p_dropout = 0, ids = NULL,
 #' out <- add_interval_censoring(sim$events, visits = realized)
 #' head(out)
 #' }
-visit_schedule_informative <- function(schedule, events, end,
+visit_schedule_informative <- function(visits, events, end,
     miss_near_event = NULL, extra_visit_after_event = NULL,
     p_miss_base = 0, id_var = "ID", time_var = "sim_time",
     status_var = "sim_status", seed = NULL) {
@@ -464,7 +468,7 @@ visit_schedule_informative <- function(schedule, events, end,
     }
 
     ids <- events[[id_var]]
-    sched <- .normalize_visit_schedule(schedule, ids)
+    sched <- .normalize_visit_schedule(visits, ids)
 
     if (!is.null(seed)) {
         set.seed(seed)
@@ -481,7 +485,12 @@ visit_schedule_informative <- function(schedule, events, end,
             if (isTRUE(s == 1L) && !is.null(miss_near_event)) {
                 w <- miss_near_event$window
                 in_window <- v[non_baseline] < t & v[non_baseline] >= (t - w)
-                p_eff[in_window] <- miss_near_event$p
+                # Additive/competing-risks, not override: a visit is
+                # missed if it would have been missed by either
+                # mechanism (independent events) -- collapses exactly
+                # to miss_near_event$p when p_miss_base = 0.
+                p_eff[in_window] <- 1 - (1 - p_miss_base) *
+                    (1 - miss_near_event$p)
             }
             if (any(p_eff > 0)) {
                 miss <- stats::runif(length(non_baseline)) < p_eff
