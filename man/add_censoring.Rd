@@ -75,8 +75,7 @@ draw, and the censoring draw together, in that fixed order -- see
 }
 \description{
 Adds a second, independent censoring process to an already-simulated
-time-to-event data frame -- the mechanism described in
-\code{reports/16_censoring_design.md} (option A): a censoring time
+time-to-event data frame: a censoring time
 \eqn{C_i} is drawn per subject from \code{censoring}, and the observed
 outcome becomes \eqn{\min(T_i, C_i, end)}, with \code{sim_status = 1}
 only if \eqn{T_i} (the original \code{sim_time}) is the minimum.
@@ -103,7 +102,9 @@ table(out2$sim_reason)
 }
 \seealso{
 \code{\link{censoring_rate_for}}, to choose \code{rate}/
-  \code{scale} for a target censoring fraction; the "Right censoring"
-  section of \code{vignette("pkpd-time-to-event", package = "simtte")}
-  for a worked example, including the scale-helper workflow.
+  \code{scale} for a target censoring fraction; \code{\link{draw_censoring_times}},
+  to draw from the same \code{censoring}-shaped spec directly, with no
+  \code{events} data frame needed; the "Right censoring" section of
+  \code{vignette("pkpd-time-to-event", package = "simtte")} for a
+  worked example, including the scale-helper workflow.
 }

@@ -1,0 +1,186 @@
+---
+title: "Bring Your Own PK/PD Model"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Bring Your Own PK/PD Model}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(simtte)
+```
+
+`sim_tte_ode()`'s six built-in PK/PD models
+(`vignette("pkpd-time-to-event")`) cover common structures; `tte_model()`
+converts *any* `mrgsolve` model with an `$ODE`/`$DES` block into one
+usable the same way. This vignette covers the conversion mechanics, how
+it interacts with a model's own between-subject variability, the
+boundary between a covariate effect and a model parameter, and the
+compile-cost/caching trade-off.
+
+## 1. A minimal conversion
+
+Here is a complete, short model -- one-compartment PK with first-order
+absorption -- with no survival scaffolding of its own:
+
+```{r tte-model-source}
+my_model <- "
+$PARAM CL = 1, V = 20, KA = 1
+$CMT DEPOT CENT
+$ODE
+dxdt_DEPOT = -KA*DEPOT;
+dxdt_CENT = KA*DEPOT - (CL/V)*CENT;
+"
+```
+
+Convert it, naming the hazard as a plain C++ expression in terms of
+the model's own quantities (`CENT`, `V`) and new hazard parameters
+(`H0`, `beta`):
+
+```{r tte-model-convert}
+tm <- tte_model(my_model, hazard = "H0 * exp(lp + beta * (CENT/V))",
+  params = list(H0 = 0.01, beta = 0.05))
+tm
+```
+
+`tm$code` is the full converted model, ready to inspect:
+
+```{r tte-model-code}
+cat(tm$code, sep = "\n")
+```
+
+Pass `tm` to `sim_tte_ode()` exactly like a built-in model name:
+
+```{r tte-model-sim}
+dose <- data.frame(ID = 1:30, time = 0, cmt = 1, amt = 100, evid = 1)
+sim_tm <- sim_tte_ode(model = tm, n = 30, end = 20, delta = 2, data = dose,
+  seed = 1)
+head(sim_tm$events)
+```
+
+A bare compiled `mrgsolve` model (not wrapped by `tte_model()`) is not
+accepted directly by `sim_tte_ode()` -- convert it first. This keeps
+there to exactly one way to bring a model in.
+
+## 2. What conversion actually does
+
+`tte_model()` writes the same survival scaffold every built-in
+`*_hazard` model already has -- a `p11` compartment with
+`dxdt_p11 = -p11 * HAZ`, a per-subject uniform draw `U`, an
+administrative horizon `END`, and the in-solver latch that records the
+first crossing time -- onto your model, mechanically:
+
+1. Your model's own `$ODE`/`$DES` content is required (a
+   `$PKMODEL`/`$PRED`-only model is rejected, since the survival
+   compartment must be co-integrated in the same ODE system; use an
+   ODE-form `mrgsolve::modlib()` equivalent instead, e.g. `"pk2cmt"`
+   not `"pk2"`).
+2. `lp`, `U`, and `END` are added as new `$PARAM` entries (defaults 0,
+   0, 1e9) -- always, whether or not your `hazard` expression uses
+   `lp`. Include `lp` in `hazard` if `sim_tte_ode()`'s
+   `covariates`/`beta`/`formula` mechanism should affect this model.
+3. Your `hazard` expression becomes `HAZ`, computed inside a brand-new
+   `$ODE` block appended after your model's own -- your model's own
+   `$ODE`/`$DES` content is never edited.
+4. `p11 = 1` is added as a new `$INIT` entry, and `p11` as a new
+   compartment.
+5. The event-detection latch (`TEVT`, `event_found`, and the bracket
+   columns `T_PRE`/`P_PRE`/`P_POST` that `sim_tte_ode()`'s refinement
+   step reads) is added to `$GLOBAL`/`$MAIN` -- the only two blocks
+   edited in place, since `mrgsolve` allows only one of each.
+6. New `$CAPTURE` entries expose the scaffold's own columns.
+7. A reserved-name collision check runs before compiling: your model
+   must not already declare `p11`, `U`, `END`, `HAZ`, `TEVT`,
+   `event_found`, `T_PRE`, `P_PRE`, `P_POST`, or `lp` for anything
+   else.
+8. The result compiles via `mrgsolve::mcode_cache()` into a
+   `"simtte_model"` object, ready for `sim_tte_ode(model = ...)`.
+
+Verified to reproduce all six built-in hazard models exactly when
+converting their own `mrgsolve::modlib()` backbones directly.
+
+## 3. `$OMEGA` coexistence
+
+If your own model already declares its own `$OMEGA` block (the classic
+`TVCL`/`ETA()` idiom), `tte_model()` leaves it untouched and
+`sim_tte_ode()`'s `omega` argument goes through it directly instead of
+the `idata` route `vignette("pkpd-time-to-event")` shows for the
+built-in models:
+
+```{r tte-model-omega}
+my_model_omega <- "
+$PARAM TVCL = 1, TVV = 20, KA = 1
+$OMEGA @labels ETA_CL ETA_V
+0 0
+$CMT DEPOT CENT
+$MAIN
+double CL = TVCL*exp(ETA_CL);
+double V  = TVV*exp(ETA_V);
+$ODE
+dxdt_DEPOT = -KA*DEPOT;
+dxdt_CENT = KA*DEPOT - (CL/V)*CENT;
+"
+tm_omega <- tte_model(my_model_omega,
+  hazard = "H0 * exp(lp + beta * (CENT/V))",
+  params = list(H0 = 0.01, beta = 0.05))
+sim_tm_omega <- sim_tte_ode(model = tm_omega, omega = diag(c(0.09, 0.16)),
+  n = 30, data = dose, end = 20, delta = 2, seed = 1)
+head(sim_tm_omega$events)
+```
+
+`tte_model()`'s own `bsv_targets` argument is the alternative, for a
+model with *no* declared `$OMEGA` block: it names which of the model's
+structural parameters `sim_tte_ode()`'s `omega` may target via the
+`idata` route instead, exactly like the built-in PK/PD models.
+Supplying `bsv_targets` for a model that already declares `$OMEGA` is
+ignored (with a `message()`) -- the two routes never combine for the
+same model.
+
+## 4. The `lp`/hazard boundary
+
+A covariate's effect (`sim_tte_ode()`'s `covariates`/`beta`/`formula`)
+must be linear in `beta`; a link that is nonlinear in a *parameter* you
+want to estimate or vary belongs directly in `hazard` instead, composed
+with whatever PK/PD state, BSV draw, or dosing your model already
+provides:
+
+```{r hazard-boundary}
+tm_emax <- tte_model(my_model, hazard = "H0 * (CENT / (EC50 + CENT))",
+  params = list(H0 = 0.01, EC50 = 5))
+sim_emax <- sim_tte_ode(model = tm_emax, n = 30, end = 20, delta = 2,
+  data = dose, seed = 1)
+head(sim_emax$events)
+```
+
+Here `EC50` is a `param` you can override or, in a future variation,
+sample per subject via `idata` -- something a covariate column can
+never do, since a covariate's effect only ever multiplies a fixed
+column by a coefficient. See `vignette("pkpd-time-to-event")` section 3
+for the same boundary from the covariate side, including a
+demonstration that a *fixed* `EC50` gives identical results whichever
+way it is written.
+
+## 5. Compile cost and caching
+
+Every `tte_model()` conversion is a real C++ compile (a few seconds).
+`mrgsolve::mcode_cache()` (used internally) skips recompiling an
+unchanged, previously-seen model within the same cache directory --
+`options(mrgsolve.project = <a persistent directory>)` makes that
+cache survive across R sessions too, worthwhile if you reconvert the
+same model many times (e.g. a simulation study script re-run
+repeatedly). Two caveats: a caller-supplied `name` reused for
+genuinely different `hazard`/`params` content, called back to back,
+can in principle collide within the same build directory (leave
+`name` at its default, which avoids this by construction, since it is
+derived from a hash of the converted code); and in a
+parallel workflow, give each worker its own cache directory, or simply
+let each one recompile -- the compile cost is small next to the
+parallel speed-up.

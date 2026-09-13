@@ -55,6 +55,8 @@
 #'
 #' @return Character vector of example model names, suitable for passing
 #'   to \code{\link{simtte_example_model}}.
+#' @seealso \code{\link{simtte_example_model}}, to load one;
+#'   \code{\link{sim_tte_df}}, the function these models are for.
 #' @export
 #' @examples
 #' simtte_example_models()
@@ -100,6 +102,8 @@ simtte_example_models <- function() {
 #'   \code{\link[mrgsolve]{mread_cache}} (for example \code{quiet = TRUE}).
 #'
 #' @return A compiled \pkg{mrgsolve} model object.
+#' @seealso \code{\link{simtte_example_models}}, to list available names;
+#'   \code{\link{sim_tte_df}}, the function these models are for.
 #' @export
 #' @examples
 #' \donttest{

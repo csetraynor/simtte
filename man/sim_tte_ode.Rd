@@ -17,6 +17,7 @@ sim_tte_ode(
   data = NULL,
   covariates = NULL,
   beta = NULL,
+  formula = NULL,
   knots = NULL,
   boundary_knots = NULL,
   coefs = NULL,
@@ -33,7 +34,7 @@ sim_tte_ode(
 \code{"mspline"}, \code{"pk_hazard"}, \code{"irm1_hazard"},
 \code{"irm2_hazard"}, \code{"irm3_hazard"}, \code{"irm4_hazard"},
 \code{"tmdd_hazard"}), or a \code{simtte_model} produced by
-\code{\link{tte_model}} (Phase 5a). A bare compiled \code{mrgmod}
+\code{\link{tte_model}}. A bare compiled \code{mrgmod}
 (not wrapped in a \code{simtte_model}) is not accepted directly --
 convert it first with \code{\link{tte_model}}.}
 
@@ -56,7 +57,13 @@ model's hazard depends on a residual-error-perturbed quantity, so
 there is no \code{idata}-based analogue for \code{sigma}.}
 
 \item{n}{Integer. Number of subjects. Ignored (and inferred from
-\code{nrow(idata)}) when \code{idata} is supplied.}
+\code{nrow(idata)}) when \code{idata} is supplied. Also ignored
+(and inferred from \code{nrow(covariates)} instead) when
+\code{idata} is \code{NULL} and a baseline, no-\code{ID} \code{formula}
+covariate frame (see "Covariates and the linear predictor" below)
+has more than one row -- supplying \code{n} explicitly in that case
+is only valid if it matches that row count exactly (an error names
+both numbers otherwise).}
 
 \item{end}{Numeric scalar. Administrative censoring horizon. Written
 into the model's \code{END} parameter for every subject that does
@@ -85,18 +92,29 @@ covariate/parameter.}
 \item{data}{Optional dosing event data, forwarded to
 \code{\link[mrgsolve]{mrgsim}}'s own \code{data} argument. If
 \code{covariates} is also supplied, the covariate-update rows built
-from it are appended to \code{data} (see "Time-varying covariates"
-below); either or both may be \code{NULL}.}
+from it are appended to \code{data} (see "Covariates and the
+linear predictor" below); either or both may be \code{NULL}.}
 
-\item{covariates}{\code{NULL} (default) or a data frame with a
-\code{time} column, an optional \code{ID} column, and one numeric
-column per name in \code{beta} -- see "Time-varying covariates"
-below.}
+\item{covariates}{\code{NULL} (default) or a covariate data frame,
+either baseline (one row per subject, no \code{time} column) or
+time-varying (a \code{time} column, an optional \code{ID} column,
+and one numeric column per covariate) -- see "Covariates and the
+linear predictor" below. Required together with \code{beta}; an
+error if only one of the two is supplied.}
 
 \item{beta}{\code{NULL} (default) or a named numeric vector of
-log-linear coefficients, one per column of \code{covariates}
-(\code{lp(t) = sum(beta * covariates(t))}). Required together with
-\code{covariates}; an error if only one of the two is supplied.}
+log-linear coefficients. Without \code{formula}, one name per raw
+column of \code{covariates} (\code{lp(t) = sum(beta *
+covariates(t))}, the original interface, unchanged). With
+\code{formula}, one name per column of the design matrix
+\code{formula} implies (\code{lp(t) = X(t) \%*\% beta}) -- see
+"Covariates and the linear predictor" below.}
+
+\item{formula}{\code{NULL} (default, preserving the original
+\code{covariates}/\code{beta} behaviour exactly) or a one-sided
+formula, e.g. \code{~ age + arm}, built into a design matrix via
+\code{\link[stats]{model.matrix}} against \code{covariates}. See
+"Covariates and the linear predictor" below.}
 
 \item{knots, boundary_knots, coefs}{Only used (and, together with
 \code{coefs}, required) when \code{model = "mspline"}; an error if
@@ -134,8 +152,7 @@ called before \code{U} is drawn.}
 output is retained in the returned object's \code{$trajectory}.
 Default \code{FALSE} (the coarse-output/in-solver-detection design
 is partly motivated by \emph{not} requiring a dense materialized
-trajectory for large cohorts; see
-\code{reports/02_technical_design.md} section 5.3).}
+trajectory for large cohorts).}
 
 \item{...}{Forwarded to \code{\link[mrgsolve]{mrgsim}}. \code{tgrid},
 \code{obsonly}, \code{nocb}, and \code{carry_out}/\code{carry.out}
@@ -144,8 +161,7 @@ here and cannot be overridden; supplying them raises an error
 naming the argument (the same \code{.check_reserved_dots()}
 mechanism \code{\link{sim_tte}} already uses). This is where
 solver-tolerance arguments relevant to in-solver event-time
-accuracy (\code{rtol}, \code{atol}, \code{hmax}, ...) are set; see
-\code{reports/02_technical_design.md} section 2.4/5.4.}
+accuracy (\code{rtol}, \code{atol}, \code{hmax}, ...) are set.}
 }
 \value{
 An object of class \code{"simtte_ode_sim"}, a list with:
@@ -165,50 +181,46 @@ An object of class \code{"simtte_ode_sim"}, a list with:
 }
 }
 \description{
-Phase 1 implementation of the in-solver event-detection mechanism
-described in \code{reports/02_technical_design.md} section 2: the
-event/censoring time is located \emph{during} ODE integration (at the
+The event/censoring time is located \emph{during} ODE integration (at the
 solver's own internal evaluations), by drawing a per-subject
 \eqn{U \sim \mathrm{Uniform}(0, 1)} and integrating the survival
 probability \code{p11} as a state, latching the first solver time at
 which \code{p11 <= U}. This is a different mechanism from
 \code{\link{sim_tte}}/\code{\link{sim_tte_df}}, which resolve event
-times \emph{after} the fact from an already-materialized trajectory;
-see \code{reports/01_codebase_audit.md} section 4 and
-\code{reports/02_technical_design.md} section 1 for why the two are
-separate code paths, not two modes of one function.
+times \emph{after} the fact from an already-materialized trajectory --
+the two are separate code paths, not two modes of one function.
 }
 \details{
 The sections below follow one reading order: the mechanism itself
 ("Boundary guard", "Event-time refinement"), then what varies by
 \code{model} ("Weibull shape support", "M-spline knot-count
 variants", "PK/PD-linked hazard models"), then the cross-cutting
-inputs any model can take ("Time-varying covariates", "Between-
-subject variability", "Right censoring", "Interval censoring"), and
-finally "Reproducibility", which ties every draw above together.
+inputs any model can take ("Covariates and the linear predictor",
+"Between-subject variability", "Right censoring", "Interval
+censoring"), and finally "Reproducibility", which ties every draw
+above together.
 
-\code{model \%in\% c("exponential", "weibull", "gompertz")} are
-implemented as of Phase 2; \code{model = "mspline"} as of Phase 3 (see
-"M-spline knot-count variants" below); the six PK/PD-linked models
-(\code{"pk_hazard"}, \code{"irm1_hazard"}--\code{"irm4_hazard"},
-\code{"tmdd_hazard"}) as of Phase 4 (see "PK/PD-linked hazard models"
-below). As of Phase 5a, \code{model} may also be a \code{simtte_model}
+\code{model \%in\% c("exponential", "weibull", "gompertz")} are the
+three closed-hazard-form library models; \code{model = "mspline"} is
+the flexible baseline hazard (see
+"M-spline knot-count variants" below); \code{"pk_hazard"},
+\code{"irm1_hazard"}--\code{"irm4_hazard"}, and
+\code{"tmdd_hazard"} are the six PK/PD-linked models (see
+"PK/PD-linked hazard models"
+below). \code{model} may also be a \code{simtte_model}
 produced by \code{\link{tte_model}}, which converts a user's own
 \pkg{mrgsolve} PK/PD model into one usable here -- see
-\code{\link{tte_model}}'s own documentation. A bare compiled
-\code{mrgmod} is not accepted directly; convert it first. An exported
-model-discovery function analogous to \code{\link{simtte_example_models}}
-is a later phase (\code{reports/03_implementation_plan.md} Phase 5).
+\code{\link{tte_model}}'s own documentation, or
+\code{\link{sim_tte_ode_models}} to list the built-in names
+programmatically. A bare compiled
+\code{mrgmod} is not accepted directly; convert it first.
 }
 \section{Boundary guard}{
  the administrative-censoring contract:
 The shipped library models latch \code{TEVT} (the in-solver event
 time) only while \code{SOLVERTIME <= END}, so an internal solver
 evaluation past the requested follow-up horizon can never be recorded
-as an event time (this guards against the exact defect documented in
-\code{reports/PHASE_E_THRESHOLD_TRACKING_REPORT.md} section 10 and
-reproduced/fixed in \code{reports/02_technical_design.md} section
-2.5). \code{sim_tte_ode()} additionally re-applies the boundary rule
+as an event time. \code{sim_tte_ode()} additionally re-applies the boundary rule
 on the R side, independent of the in-model guard: a subject is
 censored (\code{sim_status = 0}, \code{sim_time = end}) if no event
 was latched at all, \strong{or} if the latched time is \code{>= end}.
@@ -221,8 +233,7 @@ contract.
 
 The raw in-solver \code{TEVT} is quantized to the ODE solver's own
 internal step grid, which is generally finer than, but not
-independent of, the requested output grid and solver tolerance (see
-\code{reports/02_technical_design.md} section 2.4). For every subject
+independent of, the requested output grid and solver tolerance. For every subject
 classified as an event, \code{sim_tte_ode()} therefore refines the
 final \code{sim_time} using the already-validated cumulative-hazard
 interpolation \code{.interpolate_log_survival()} (the same method
@@ -230,9 +241,9 @@ interpolation \code{.interpolate_log_survival()} (the same method
 "log_survival"}), applied \strong{between the solver's own last
 pre-crossing evaluation and the crossing evaluation itself} -- an
 interval one internal solver step wide, captured directly from the
-model (as of Phase 2.5; \code{reports/08_phase2_5_report.md}), not
-between the two \emph{reported} trajectory rows bracketing \code{U}
-the way Phase 1/2 did it. \code{TEVT} itself therefore only decides
+model, not
+between the two \emph{reported} trajectory rows bracketing \code{U}.
+\code{TEVT} itself therefore only decides
 \strong{whether} a subject had an event before \code{end}; the
 reported \code{sim_time} for an event subject comes from this
 bracket interpolation, not from the raw \code{TEVT} value.
@@ -243,10 +254,9 @@ interval, its width (and hence the constant-hazard-within-bracket
 approximation error) does not grow as the requested output grid gets
 coarser -- confirmed directly across \code{delta} of 4, 1, and 0.25
 for Weibull \code{shape = 0.5, 1, 2, 5} and Gompertz
-\code{gamma = +/-}, where Phase 2's grid-based refinement had instead
+\code{gamma = +/-}, where an earlier, grid-based refinement approach had instead
 gotten \emph{worse} than raw \code{TEVT} at coarse \code{delta} for
-shapes far from 1 (\code{reports/06_phase2_report.md} section 4);
-see \code{reports/08_phase2_5_report.md} for the repeated table.
+shapes far from 1.
 \code{delta}/\code{add} therefore now control only the resolution of
 the returned \code{$trajectory} (when \code{keep_trajectory = TRUE})
 and of the reported-grid \emph{fallback} described next -- not the
@@ -263,24 +273,21 @@ user-supplied trajectory missing the \code{T_PRE}/\code{P_PRE}/
 emitted per \code{sim_tte_ode()} call whenever any subject falls
 back}, naming how many did; a finer \code{delta}/\code{add} improves
 those subjects' event times specifically (the fallback is exactly
-Phase 1/2's grid-based method, so its accuracy still depends on the
-grid the same way \code{reports/06_phase2_report.md} section 4
-describes). This message never changes the returned result and is
+the earlier grid-based method, so its accuracy still depends on the
+grid). This message never changes the returned result and is
 suppressible with \code{suppressMessages()}, like every guardrail
 message this function emits (see also "Weibull shape support" below).
 
 \strong{Two fallback-triggering mechanisms have been characterized so
 far, with different remedies}, and the message differentiates them
-(\code{reports/04_author_decisions.md} "After Phase 3" decision 1;
-classified purely from the already-captured bracket columns, no new
+(classified purely from the already-captured bracket columns, no new
 model-side logic): a \strong{Weibull-type} signature (\code{P_POST}
 outside \code{[0, 1]}, a genuine solver overshoot across one large
-internal step -- \code{reports/08_phase2_5_report.md} section 4,
-remedied by a finer \code{delta}/\code{add}), and an
+internal step, remedied by a finer \code{delta}/\code{add}), and an
 \strong{M-spline-type} signature (\code{T_PRE == TEVT} exactly, with
 both \code{P_PRE} and \code{P_POST} legitimate probabilities -- a
 same-timestamp, multiple-corrector-iteration degeneracy near a
-locally steep hazard, \code{reports/10_phase4_report.md}, remedied by
+locally steep hazard, remedied by
 tighter \code{rtol}/\code{atol}, \strong{not} \code{delta}). A
 subject matching neither signature (including every subject when the
 bracket columns are unavailable at all) is reported as unclassified,
@@ -295,14 +302,13 @@ region where the hazard changes by orders of magnitude, and a
 trial/corrector evaluation partway through that step can be
 momentarily unphysical -- detected and safely handled by the
 fallback described above, not a silent wrong answer. Measured
-directly for Weibull \code{shape = 5} and \code{shape = 10}
-(\code{reports/08_phase2_5_report.md} section 4): fallback engagement
+directly for Weibull \code{shape = 5} and \code{shape = 10}:
+fallback engagement
 drops from 100\% of subjects to 0\% between \code{delta = 1} and
 \code{delta = 0.5} at \code{shape = 10}. The remedy is exactly what
 the fallback message already states: request a finer
 \code{delta}/\code{add}. This is a named, disclosed, non-blocking
-regime, not a separate guardrail (Phase 2.5's own fallback message
-already covers it).
+regime, not a separate guardrail.
 }
 
 \section{Weibull shape support}{
@@ -313,12 +319,12 @@ evaluated at every reported time). This function's \code{"weibull"}
 library model genuinely integrates the Weibull hazard as an ODE
 state, which diverges as \eqn{t \to 0^+} for \code{shape < 1} -- a
 real mathematical property of the hazard, not a floating-point
-artifact (see \code{PHASE_A_REPORT.md} section 4, where integrating
-this exact hazard as an ODE was first found to fail outright for
-small shapes). \code{weibull_ode.cpp} floors the time value used
+artifact (integrating
+this exact hazard as an ODE fails outright for
+small shapes without a floor). \code{weibull_ode.cpp} floors the time value used
 \emph{inside the hazard expression only} (never \code{SOLVERTIME}
 itself) at \code{1e-100}, which was verified
-(\code{reports/06_phase2_report.md}, risk R1) to eliminate solver
+directly to eliminate solver
 failure/\code{NaN}/non-monotone \code{p11} entirely across
 \code{shape} from 0.01 to 10, with accuracy at or below mrgsolve's
 own default solver tolerance for \code{shape >= 0.05}, degrading
@@ -326,8 +332,8 @@ gracefully (larger but still finite, still monotone bias) below that.
 \strong{This model always runs (no error) for any \code{shape > 0}};
 for \code{shape < 0.05} specifically, prefer
 \code{\link{sim_tte}(type = "weibull")} if exactness near \code{t = 0}
-matters more than the in-solver mechanism's other properties. As of
-Phase 2.5, \code{sim_tte_ode()} additionally emits one \code{message()}
+matters more than the in-solver mechanism's other properties.
+\code{sim_tte_ode()} additionally emits one \code{message()}
 per call when the effective \code{shape} (after \code{param}
 overrides) is below \code{0.05}, pointing back to this section; the
 simulation itself is unaffected (suppressible with
@@ -340,20 +346,18 @@ described above).
 \code{model = "mspline"} evaluates a degree-2 (quadratic) normalized
 M-spline basis (Ramsay 1988 scaling, matching
 \code{splines2::mSpline(..., degree = 2, intercept = TRUE)} exactly
--- verified to floating-point precision, \code{reports/09_phase3_report.md}
-section 1) \strong{inside the compiled model, in C++}, not as a
+-- verified to floating-point precision) \strong{inside the compiled model, in C++}, not as a
 precomputed covariate the way \code{\link{sim_tte}(type = "ms")}
 does: \code{HAZ = eta * sum_m coefs[m] * M_m(t)}, a genuinely
 continuous, smooth hazard, integrated as a real \code{$ODE} state
 like every other \code{sim_tte_ode()} model (chosen specifically so
-Phase 2.5's in-solver bracket refinement, which assumes a smooth
+the in-solver bracket refinement above, which assumes a smooth
 hazard, applies to the M-spline model too -- a piecewise-constant
 covariate does not give that).
 
 Because the basis is compiled in, only a small, fixed set of
-interior-knot counts is shipped (\strong{3, 5, or 7} interior knots;
-\code{reports/02_technical_design.md} section 4 option 1's "moderate,
-fixed set" compromise) -- \code{length(knots)} selects which shipped
+interior-knot counts is shipped (\strong{3, 5, or 7} interior knots,
+a moderate, fixed-set compromise) -- \code{length(knots)} selects which shipped
 variant is used; any other count errors, naming the supported counts
 and pointing to \code{\link{sim_tte}(type = "ms")}, which accepts an
 arbitrary knot count (at the cost of being a piecewise-constant
@@ -367,11 +371,11 @@ the same hazard \code{sim_tte(type = "ms")} would produce from a
 \code{coefs} as its own \code{coefs} argument -- knots and
 coefficients are directly portable between the two functions.
 
-No time floor is needed (unlike \code{"weibull"}'s risk R1): the
+No time floor is needed (unlike \code{"weibull"}'s divergence at
+\code{t = 0}): the
 M-spline basis is bounded and finite everywhere on
 \code{[boundary_knots[1], boundary_knots[2]]}, including exactly at
-the boundary -- verified directly, not assumed
-(\code{reports/09_phase3_report.md} section 1). The hazard \strong{is}
+the boundary -- verified directly, not assumed. The hazard \strong{is}
 identically zero outside that interval, though (a consequence of the
 clamped-knot spline construction): \code{end} (and every
 \code{idata$END}) must not exceed \code{boundary_knots[2]}, enforced
@@ -383,12 +387,12 @@ already applies, for the same reason.
 \section{PK/PD-linked hazard models}{
 
 Six library models link the hazard to a PK/PD quantity computed by a
-genuine \pkg{mrgsolve} PK/PD backbone (\code{reports/10_phase4_report.md}),
+genuine \pkg{mrgsolve} PK/PD backbone,
 each reusing an unedited \code{mrgsolve::modlib()} model verbatim and
 adding only the survival scaffold and the hazard link itself (the
 per-model mechanical-edit list is documented at the top of each
-\file{.cpp} file and is the specification for a future model-converter
-utility, \code{reports/04_author_decisions.md} section 6):
+\file{.cpp} file, and is exactly what \code{\link{tte_model}}
+automates for a model of your own):
 \itemize{
   \item \code{"pk_hazard"} (backbone \code{"pk2cmt"}): concentration-
     driven, log-linear: \code{HAZ = H0 * exp(beta_cp * CP)}.
@@ -411,36 +415,34 @@ hazard \code{H0} when its \code{beta_*} parameter is 0. Dosing and
 other event data are supplied via this function's existing \code{data}
 argument (\pkg{mrgsolve} event data, e.g. \code{evid}/\code{amt}/
 \code{cmt}/\code{time} rows) exactly as for any \pkg{mrgsolve} model;
-\code{covariates}/\code{beta} (see "Time-varying covariates" above)
-compose with these models unchanged -- \code{lp} is folded into
+\code{covariates}/\code{beta} (see "Covariates and the linear
+predictor" above) compose with these models unchanged -- \code{lp}
+is folded into
 \code{eta} the same way the closed-form models do, wherever a given
 backbone itself multiplies a hazard-scale quantity by \code{eta}
 (verified directly, not assumed, for the models where \code{lp} is
-wired into the hazard link this way; see
-\code{reports/10_phase4_report.md}). \pkg{TMDD} is the intentionally
+wired into the hazard link this way). \pkg{TMDD} is the intentionally
 stiff member of this set (fast binding kinetics next to slow target
 turnover) and is this library's designated steepness stress case. An
 outright ODE solver failure (not the reported-grid fallback described
 above, an \pkg{mrgsolve}/\code{lsoda} error that stops the call) is
 possible for \code{"tmdd_hazard"} at a sufficiently extreme
 parameter/dose combination -- far past any shipped default -- and is
-not wrapped with a more informative message
-(\code{reports/04_author_decisions.md} "After Phase 5b" decision 2):
+not wrapped with a more informative message:
 it means the parameters are too extreme for the requested tolerance;
 try tighter \code{rtol}/\code{atol} or a smaller dose.
 }
 
-\section{Time-varying covariates}{
+\section{Covariates and the linear predictor}{
 
 \code{covariates}/\code{beta} generalize \code{sim_tte()}'s
-single-covariate \code{lp_data} mechanism
-(\code{PHASE_F_DESIGN_REPORT.md}/\code{PHASE_G_REPORT.md}) to an
+single-covariate \code{lp_data} mechanism to an
 arbitrary named set: \eqn{lp(t) = \sum_k \beta_k X_k(t)}, computed in
 R and supplied to the model as an ordinary time-varying \code{lp}
 covariate (last-observation-carried-forward, the same convention
 \code{sim_tte()} already uses) -- no library model file needs to
 change to support this, since every one of them already recomputes
-\code{eta = exp(mu + lp)} inside \code{$ODE} (Phase 1). Coverage
+\code{eta = exp(mu + lp)} inside \code{$ODE}. Coverage
 follows the same rule as \code{sim_tte()}'s Weibull \code{lp_data}
 path: every subject's \code{covariates} must include an observation
 at \code{time = 0}; the last known value is carried forward for any
@@ -450,6 +452,54 @@ piecewise-constant-on-a-fixed-grid closed form). \strong{Limitation}:
 when \code{covariates} has an \code{ID} column, it must equal
 \code{1:nrow(idata)} exactly -- subject-specific covariates for a
 non-default (non-\code{1:n}) subject numbering are not yet supported.
+
+\strong{Legacy form} (\code{formula} not supplied): every name in \code{beta} must be a raw numeric column of
+\code{covariates}, used as-is -- no factor coding, interactions, or
+transforms.
+
+\strong{Formula form}: supplying \code{formula} builds a design
+matrix \code{X} via \code{\link[stats]{model.matrix}(formula,
+covariates)}, and \code{lp(t) = X(t) \%*\% beta}; \code{beta}'s names
+must then match \code{colnames(X)} exactly (an error lists the
+expected names otherwise). \code{covariates} may be
+\strong{baseline} (no \code{time} column -- equivalent to a single
+\code{time = 0} row per subject, carried forward for the whole
+follow-up) or \strong{time-varying} (as in the legacy form). A
+baseline frame with no \code{ID} column is either a
+\strong{population-level constant}, recycled to every subject, if it
+has exactly one row, or \strong{one row per subject} if it has more
+than one row -- in the latter case, \code{n} (see above) is inferred
+from its row count when not supplied explicitly. An implied
+intercept column is dropped automatically, with a \code{message()}
+naming why (the model's own baseline hazard parameter, e.g.
+\code{H0}/\code{mu}, already plays that role, so an intercept in
+\code{lp} would be additively unidentifiable against it) -- write
+\code{formula = ~ 0 + ...} to suppress that message and get one
+design-matrix column per factor level instead of the usual
+\code{k - 1} treatment-contrast columns for the \emph{first} factor
+term in \code{formula} (R's own \code{\link[stats]{model.matrix}}
+convention for keeping a no-intercept design full rank; every other
+factor term still gets \code{k - 1} columns). A separate
+\code{message()} names which term this happened for, since it
+changes what \code{beta}'s expected names are.
+
+Because \code{X} only ever needs to be linear in \code{beta}, not in
+the covariates themselves, terms nonlinear in a \emph{covariate} are
+in scope: \code{formula = ~ 0 + age + I(age^2) + log(dose) +
+splines::ns(weight, 3) + arm}, or a covariate column already computed
+as an Emax-shaped transform of a \emph{known, fixed} \code{EC50}
+(e.g. a column \code{dose / (EC50 + dose)} for a literal numeric
+\code{EC50}), all work directly. Terms nonlinear in a \emph{parameter}
+the model itself estimates or a caller varies across scenarios -- an
+Emax link whose \code{EC50} is itself unknown or varied -- are out of
+scope for \code{lp}/\code{formula}: that belongs in the model's
+\code{HAZ} expression instead (\code{\link{tte_model}(hazard =
+"H0 * (CP / (EC50 + CP))", params = list(EC50 = 5))}), where it
+composes with PK/PD states, BSV, and dosing directly. The two express
+the same kind of relationship, but only the second lets \code{EC50}
+itself be estimated or varied; a fixed \code{EC50} can be written
+either way, and gives the same event-time distribution either way
+(verified directly).
 }
 
 \section{Between-subject variability}{
@@ -461,7 +511,7 @@ this package's own scaffold adds): a log-normal draw,
 \eqn{\theta_i = \theta_{pop} \cdot \exp(\eta_i)}, computed in R with
 \code{\link[mrgsolve]{mvgauss}} and supplied as ordinary \code{idata}
 columns -- exactly the mechanism already used for \code{U}
-(\code{reports/11_bsv_review.md} option (b); no model file needs a
+(no model file needs a
 declared \code{$OMEGA} block for this to work). The valid targets
 are every structural parameter of the model's own \pkg{mrgsolve}
 backbone (see each \code{*_hazard.cpp} file's own \code{[PROB]}
@@ -479,7 +529,7 @@ both an \code{idata} column and an \code{omega} target with the same
 name is an error (no silent override in either direction).
 
 \strong{Coexistence with a user-supplied model} (a compiled
-\code{mrgmod} with its own \code{$OMEGA}/\code{ETA()} wiring, Phase 5):
+\code{mrgmod} with its own \code{$OMEGA}/\code{ETA()} wiring):
 \code{omega} is dispatched on whether the resolved model already
 declares a matching block. A model that does (any hand-written
 model using the standard \code{TVCL}/\code{ETA()} idiom) goes
@@ -508,8 +558,7 @@ drawn from the requested distribution, with the observed outcome
 becoming \code{min(event time, censoring time, end)} and
 \code{sim_reason = "censored"} for a subject pulled earlier by the
 draw. See \code{\link{add_censoring}} for the full spec (the same
-function this argument calls internally) and
-\code{reports/16_censoring_design.md} for why this is applied in R
+function this argument calls internally); this is applied in R
 after simulation rather than as a second ODE compartment (out of
 scope for this release: censoring that depends on a subject's own
 simulated PK/PD trajectory, e.g. dropout driven by toxicity).
@@ -529,9 +578,7 @@ applied \strong{after} any \code{censoring} (see
 \code{\link{add_interval_censoring}} "Ordering with right censoring"
 for why the order matters); a \code{list(every = , jitter = )} value
 builds the schedule via \code{\link{visit_schedule}} first, inside
-this call's own seeded block. See
-\code{reports/18_interval_censoring_design.md} for the full design,
-including why this is a post-simulation R mapping rather than an
+this call's own seeded block -- a post-simulation R mapping, not an
 in-solver mechanism.
 
 A realistic (missed-visit, dropout, or outcome-reactive) schedule is
