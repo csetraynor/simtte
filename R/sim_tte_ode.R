@@ -101,7 +101,9 @@
 #'   block -- see "Right censoring" below.
 #' @param visits \code{NULL} (default), a visit schedule (a numeric
 #'   vector or per-subject data frame, see \code{\link{add_interval_censoring}}),
-#'   or a jitter spec \code{list(every = <spacing>, jitter = <optional>)}.
+#'   or a jitter spec \code{list(every = <spacing>, jitter = <optional>,
+#'   jitter_dist = <optional, "uniform"/"normal">, jitter_trunc =
+#'   <optional>)}.
 #'   When supplied, \code{\link{add_interval_censoring}} is applied to
 #'   \code{$events} \strong{after} any \code{censoring} above -- see
 #'   "Interval censoring" below. The jitter-spec form calls
@@ -415,6 +417,21 @@
 #' including why this is a post-simulation R mapping rather than an
 #' in-solver mechanism.
 #'
+#' A realistic (missed-visit, dropout, or outcome-reactive) schedule is
+#' \strong{not} a \code{visits =} form this function accepts directly --
+#' build it standalone, then pass the result as \code{visits}:
+#' \preformatted{
+#' sched <- visit_schedule(n = 50, every = 4, end = 24, jitter = 1, seed = 1)
+#' realized <- thin_visits(sched, p_miss = 0.1, seed = 2)
+#' sim <- sim_tte_ode(model = "exponential", param = list(H0 = 0.05),
+#'   n = 50, end = 24, delta = 2, visits = realized, seed = 1)
+#' }
+#' \code{\link{visit_schedule_informative}} (which needs \code{$events},
+#' so it cannot run before simulation at all) composes the same way,
+#' applied to \code{sim$events} after the fact and fed back through
+#' \code{\link{add_interval_censoring}} directly rather than through
+#' this function's \code{visits} argument a second time.
+#'
 #' @section Between-subject variability:
 #' \code{omega} adds between-subject variability (BSV) to the
 #' \strong{structural PK/PD parameters} of the six models above (not
@@ -623,7 +640,10 @@ sim_tte_ode <- function(model, param = list(), omega = NULL, sigma = NULL,
             }
             sched <- visit_schedule(n = nrow(idata), every = visits$every,
                 end = end, jitter = if (is.null(visits$jitter)) 0 else
-                    visits$jitter)
+                    visits$jitter, jitter_dist = if (is.null(visits$jitter_dist))
+                    "uniform" else visits$jitter_dist,
+                jitter_trunc = if (is.null(visits$jitter_trunc)) 2 else
+                    visits$jitter_trunc)
             sched$ID <- idata$ID[sched$ID]
             sched
         } else {

@@ -4,7 +4,15 @@
 \alias{visit_schedule}
 \title{Generate a per-subject visit schedule with fixed spacing and jitter}
 \usage{
-visit_schedule(n, every, end, jitter = 0, seed = NULL)
+visit_schedule(
+  n,
+  every,
+  end,
+  jitter = 0,
+  jitter_dist = c("uniform", "normal"),
+  jitter_trunc = 2,
+  seed = NULL
+)
 }
 \arguments{
 \item{n}{Integer. Number of subjects; schedules are generated for
@@ -18,7 +26,24 @@ schedule is \code{seq(0, end, by = every)} before jitter).}
 
 \item{jitter}{Non-negative numeric scalar (default \code{0}, no
 jitter). Each non-baseline visit is perturbed by an independent
-\code{stats::runif(1, -jitter, jitter)} draw, clamped at \code{0}.}
+draw from \code{jitter_dist}: \code{jitter} is the draw's
+half-width for \code{"uniform"} (\code{stats::runif(1, -jitter,
+jitter)}) or its standard deviation for \code{"normal"}, which is
+truncated at \code{+/- jitter_trunc * jitter} (see
+\code{jitter_trunc}) and drawn via inverse-CDF
+(\code{stats::qnorm()} on a \code{stats::runif()} restricted to the
+truncated range) -- one uniform draw per visit either way, so both
+distributions consume the seeded stream the same shape of way.}
+
+\item{jitter_dist}{\code{"uniform"} (default; unchanged behavior and
+seeds from before this argument existed) or \code{"normal"}
+(truncated, see \code{jitter_trunc}; its seeds changed when the
+truncation/bound was added -- see \code{NEWS.md}).}
+
+\item{jitter_trunc}{Positive numeric scalar, default \code{2}. Only
+used for \code{jitter_dist = "normal"}: the truncation half-width,
+in standard deviations, of the truncated normal jitter draw.
+Ignored for \code{"uniform"}.}
 
 \item{seed}{Optional integer. If supplied, \code{set.seed(seed)} is
 called before any jitter is drawn. Leave \code{NULL} when calling
@@ -40,15 +65,28 @@ perturbed per subject by up to \code{jitter} (a common pattern in
 trial simulation -- scheduled visits rarely land exactly on the
 nominal day). The baseline visit (\code{time = 0}) is never
 jittered, so the result always satisfies
-\code{add_interval_censoring()}'s "must start at 0" requirement;
-every other visit's jitter is clamped at \code{0} (never negative)
-and the result is re-sorted per subject, so a large \code{jitter}
-relative to \code{every} cannot silently reorder a subject's own
-visits.
+\code{add_interval_censoring()}'s "must start at 0" requirement.
+}
+\details{
+\code{jitter} is validated against \code{every} \emph{before} any
+draw is made: the maximum possible deviation (\code{jitter} for
+\code{"uniform"}, \code{jitter_trunc * jitter} for \code{"normal"})
+must be less than \code{every / 2}, which guarantees -- by
+construction, not by a post-hoc check -- that jittered visits can
+never cross order or collide (adjacent nominal visits are
+\code{every} apart; two deviations each smaller than half of that
+cannot close the gap) or go negative (the first non-baseline visit
+is at least \code{every / 2} above \code{0}). A \code{jitter}
+violating this bound is an error, naming the bound, rather than a
+silently reordered or clamped schedule.
 }
 \examples{
 visit_schedule(n = 5, every = 4, end = 20, jitter = 1, seed = 1)
+visit_schedule(n = 5, every = 4, end = 20, jitter = 0.4,
+  jitter_dist = "normal", seed = 1)
 }
 \seealso{
-\code{\link{add_interval_censoring}}.
+\code{\link{add_interval_censoring}}, \code{\link{thin_visits}}
+  and \code{\link{visit_schedule_informative}}, to layer missed
+  visits/dropout on top of the schedule this function returns.
 }

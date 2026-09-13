@@ -72,15 +72,55 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   `(L, Inf)`. Adds `sim_time_left`/`sim_time_right` columns --
   `sim_time`/`sim_status`/`sim_reason` are unchanged, so every existing
   consumer keeps working. `visit_schedule()` generates a per-subject
-  schedule with fixed spacing and optional random jitter.
+  schedule with fixed spacing and optional random jitter, uniform
+  (default) or normal (`jitter_dist = `; `jitter` is the half-width for
+  uniform, the standard deviation for normal) -- a `jitter` large
+  enough relative to the spacing to cross visit order raises a
+  `warning()` rather than silently reordering.
   `sim_tte_ode()` also accepts a `visits = ` argument (a schedule, or a
   jitter spec) that applies this automatically, always *after* any
   `censoring = `, inside its own seeded draw. Designed to feed
   `survival::Surv(time = sim_time_left, time2 = sim_time_right, type =
   "interval2")` directly (convert the `Inf` upper bound to `NA` first --
-  see `?add_interval_censoring`). A visit-process model (missed visits,
-  a visit hazard depending on a subject's own simulated state) is out
-  of scope; see `reports/18_interval_censoring_design.md`.
+  see `?add_interval_censoring`). An event with `sim_time_left == 0`
+  *is* a left-censored observation, with no separate mechanism needed
+  (see `?add_interval_censoring` and the vignette's "Left censoring"
+  subsection). A visit-process model reacting to a subject's own
+  simulated state (`reports/18_interval_censoring_design.md`'s deferred
+  option; "C3" below) is still out of scope.
+* **`visit_schedule()`'s `jitter_dist = "normal"` is now a *truncated*
+  normal**, truncated at `+/- jitter_trunc * jitter` (new argument,
+  default `2`), drawn via inverse-CDF. Both `jitter_dist` options are
+  now validated against `every` *before* any draw is made (uniform:
+  `jitter < every / 2`; normal: `jitter_trunc * jitter < every / 2`),
+  which guarantees jittered visits can never cross order or go
+  negative -- a `jitter`/`jitter_trunc` combination violating this
+  bound is now an error, not a `warning()` (the previous session's
+  reordering `warning()` is gone; it is now an unreachable internal
+  invariant for either built-in distribution). `"uniform"` output/seeds
+  are unchanged from the previous session; `"normal"` output/seeds
+  change (the draw mechanism itself changed to truncated inverse-CDF).
+* **`thin_visits()`: missed visits and assessment dropout ("C1")** on
+  top of a visit schedule -- reads no simulated outcome, so it can
+  never make an assessment schedule informative. Each non-baseline
+  visit is independently missed with probability `p_miss`; each subject
+  may independently start dropping out from a randomly chosen
+  non-baseline visit onward with probability `p_dropout`. Composes with
+  `add_censoring()` in either order; must run before
+  `add_interval_censoring()`.
+* **`visit_schedule_informative()`: an outcome-reactive visit schedule
+  ("C2")** -- unlike `thin_visits()`, this reads `$events` and lets
+  visit attendance/timing react to the simulated event time
+  (`miss_near_event`: a visit shortly before an event is missed at an
+  elevated rate; `extra_visit_after_event`: an unscheduled visit is
+  added shortly after an event, using the same distribution spec shape
+  as `add_censoring()`'s `censoring`). This makes the returned schedule
+  informative by construction; a `message()` naming this is emitted on
+  every call. See the vignette's "Informative assessment schedules"
+  subsection for a worked bias demonstration against `thin_visits()`.
+  A third generator reacting to a subject's own PK/PD trajectory ("C3")
+  was evaluated and deferred; see
+  `reports/20_visit_process_evaluation.md`.
 
 ## Improvements
 
