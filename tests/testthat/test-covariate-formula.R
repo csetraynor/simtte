@@ -346,3 +346,32 @@ test_that("'formula' without 'covariates'/'beta' errors", {
             end = 10, formula = ~ age),
         "requires 'covariates' and 'beta'")
 })
+
+# ---- 9. formula + custom dosing data (simttepower feedback 1: lp/data
+# merge, reports/29_simttepower_feedback_lp_merge.md) ----
+# .merge_ode_covariate_rows() (R/helpers.R) is shared by both the
+# legacy covariates/beta path and this one
+# (.build_ode_covariate_rows_formula() hands its result to the same
+# .build_ode_covariate_rows(), see R/covariates.R), so this only needs
+# to confirm the formula path reaches the merge fix and agrees with the
+# legacy path -- the merge mechanics themselves are covered by
+# test-sim-tte-ode-covariates.R section 9.
+
+test_that("formula + custom dosing data produces zero warnings and matches the legacy covariates/beta path", {
+    skip_on_cran()
+    skip_if_not_installed("mrgsolve")
+    n <- 4
+    covdat <- data.frame(ID = 1:n, time = 0, age = c(40, 50, 60, 70))
+    dosing <- .pkpd_dose_data(n)
+    param <- .PKPD_TEST_DEFAULT_PARAM$pk_hazard
+
+    legacy <- expect_no_warning(
+        sim_tte_ode(model = "pk_hazard", param = param, n = n, end = 10,
+            delta = 1, data = dosing, covariates = covdat,
+            beta = c(age = 0.01), seed = 5))
+    formula_form <- expect_no_warning(
+        sim_tte_ode(model = "pk_hazard", param = param, n = n, end = 10,
+            delta = 1, data = dosing, covariates = covdat,
+            formula = ~ 0 + age, beta = c(age = 0.01), seed = 5))
+    expect_identical(legacy$events, formula_form$events)
+})

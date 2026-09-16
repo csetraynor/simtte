@@ -956,6 +956,90 @@
         evid = 1L, amt = 0, cmt = cmt)
 }
 
+#' Merge a caller-supplied dosing \code{data} with covariate-update rows
+#'
+#' \code{sim_tte_ode()} builds \code{cov_rows} (\code{\link{.build_ode_covariate_rows}}/
+#' \code{\link{.build_ode_covariate_rows_formula}}) with their own
+#' \code{lp} column, then combines them with the caller's own \code{data}
+#' (ordinary \pkg{mrgsolve} dosing/event rows, no \code{lp} of their own)
+#' for a single \code{mrgsim()} call. Plain \code{dplyr::bind_rows(data,
+#' cov_rows)} makes every dosing row's \code{lp} \code{NA} (a column only
+#' \code{cov_rows} has), which is not just cosmetic: \pkg{mrgsolve} does
+#' not carry a \code{NA} \code{$PARAM} value forward the way it carries a
+#' real one (\code{nocb = FALSE} covariate semantics apply only to
+#' \emph{present} values) -- once \code{lp} goes \code{NA} at a data-set
+#' record, the \code{p11} ODE state itself becomes (and permanently
+#' stays) \code{NaN} for the rest of that subject's trajectory, even
+#' after a later covariate-update row gives \code{lp} a real value again
+#' (verified directly, \code{reports/experiments/29_lp_na_mechanism.R}):
+#' a real correctness bug (silently turning a genuine later event into
+#' administrative censoring), not only the \code{mrgsolve::valid_data_set()}
+#' warning it happens to also raise. A merged data set with dosing rows
+#' out of time order relative to \code{cov_rows} (guaranteed whenever
+#' \code{data} is appended before \code{cov_rows} without re-sorting, as
+#' the pre-fix code did) can additionally make \pkg{mrgsolve} error
+#' outright (\code{"the data set is not sorted by time"}) or silently
+#' simulate a subject's rows as two disjoint blocks -- both fixed by the
+#' same sort applied here.
+#'
+#' Every non-\code{cov_rows} row's \code{lp} is filled by
+#' \code{\link{.locf_at}} against \emph{that row's own subject}'s
+#' \code{cov_rows} trajectory (last covariate value in force at that
+#' row's \code{time} -- \code{cov_rows} is guaranteed to cover \code{time
+#' = 0} for every subject, \code{\link{.check_lp_data_coverage}}), so the
+#' merged frame contains no \code{NA} in \code{lp} by construction, and
+#' is sorted by \code{ID}/\code{time} so every subject's rows form one
+#' non-decreasing-time block.
+#'
+#' @param data \code{NULL}, or the caller's own dosing/event data frame
+#'   (\code{sim_tte_ode()}'s own \code{data} argument); must have an
+#'   \code{ID} column when non-\code{NULL} (an unlabeled row's subject,
+#'   and hence which \code{lp} trajectory it should carry, would
+#'   otherwise be ambiguous -- an explicit error names this instead of
+#'   guessing).
+#' @param cov_rows Data frame from \code{\link{.build_ode_covariate_rows}}/
+#'   \code{\link{.build_ode_covariate_rows_formula}}: one row per
+#'   covariate-update record, columns \code{ID}, \code{time}, \code{lp},
+#'   \code{evid}, \code{amt}, \code{cmt}.
+#' @return \code{data} and \code{cov_rows} combined into one data frame,
+#'   sorted by \code{ID} then \code{time}, with no \code{NA} in \code{lp}.
+#' @noRd
+.merge_ode_covariate_rows <- function(data, cov_rows) {
+    if (is.null(data) || !nrow(data)) {
+        return(cov_rows[order(cov_rows$ID, cov_rows$time), ])
+    }
+    data <- as.data.frame(data)
+    if ("lp" %in% names(data)) {
+        stop("'data' already has an 'lp' column, which conflicts with ",
+            "the 'lp' column sim_tte_ode() builds from 'covariates'/",
+            "'beta' (or 'formula'): supplying both leaves no way to ",
+            "tell which one should apply at a dosing record. Fold ",
+            "'data$lp' into 'covariates'/'beta' (or 'formula') instead ",
+            "of supplying it directly in 'data', or rename 'data's own ",
+            "column if it means something else.", call. = FALSE)
+    }
+    if (!"ID" %in% names(data)) {
+        stop("'data' must have an 'ID' column when combined with ",
+            "'covariates'/'beta' (or 'formula'): sim_tte_ode() cannot ",
+            "otherwise tell which subject's 'lp' trajectory a dosing ",
+            "row in 'data' belongs to.", call. = FALSE)
+    }
+    cov_by_id <- split(cov_rows, cov_rows$ID)
+    unknown <- setdiff(unique(data$ID), cov_rows$ID)
+    if (length(unknown)) {
+        stop("'data' has ID(s) not present in 'covariates': ",
+            paste(unknown, collapse = ", "), ". Every subject dosed ",
+            "via 'data' must also have a covariate trajectory.",
+            call. = FALSE)
+    }
+    data$lp <- vapply(seq_len(nrow(data)), function(i) {
+        traj <- cov_by_id[[as.character(data$ID[i])]]
+        .locf_at(traj$time, traj$lp, data$time[i])
+    }, numeric(1))
+    merged <- dplyr::bind_rows(data, cov_rows)
+    merged[order(merged$ID, merged$time), ]
+}
+
 #' Apply an omega/sigma matrix to a sim_tte_ode() model, with an
 #' informative error instead of mrgsolve's own cryptic one
 #'

@@ -252,6 +252,33 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   reproducibility contract (one `U` draw per `idata` row, insensitivity
   of `mrgsolve::mvgauss()`'s BSV draw to intervening ordinary RNG draws)
   is documented the same way.
+* **`sim_tte_ode()`: combining `covariates`/`beta` (or `formula`) with a
+  caller-supplied dosing `data` no longer corrupts the simulation.**
+  Every dosing row's `lp` was previously left `NA` by the internal
+  `dplyr::bind_rows(data, cov_rows)` merge (only the covariate-update
+  rows had an `lp` column) -- not merely the `mrgsolve` warning this
+  produced ("Parameter column lp must not contain missing values"):
+  `mrgsolve` does not carry a `NA` `$PARAM` value forward, so once `lp`
+  went `NA` at a dosing record, the `p11` survival state became, and
+  permanently stayed, `NaN` for the rest of that subject's trajectory
+  -- silently turning a real later event into administrative censoring,
+  with no error or warning identifying which subjects were affected.
+  The merge now fills every dosing row's `lp` by last-observation-
+  carried-forward against that subject's own covariate trajectory
+  before combining the two, and sorts the merged data by `ID`/`time`
+  (also fixing two related failure modes from the same unsorted merge:
+  `mrgsolve` erroring "the data set is not sorted by time", or silently
+  simulating a subject's rows as two disjoint blocks). A `data` frame
+  that already has its own `lp` column now errors clearly instead of
+  silently colliding with the one `covariates`/`beta`/`formula` builds.
+  **This bug was only ever reachable through `covariates`/`beta`/
+  `formula` combined with `data` in `sim_tte_ode()`, both new in this
+  (still unreleased) 1.1.0 -- no CRAN-released behavior is affected.**
+  Any local 1.1.0-development result produced by combining
+  `covariates`/`beta`/`formula` with a custom dosing `data` should be
+  re-run; every other `sim_tte_ode()`/`sim_tte()` call path is
+  untouched. Found and reported by the `simttepower` companion
+  package's Phase 1 integration testing.
 
 ## Public API additions
 

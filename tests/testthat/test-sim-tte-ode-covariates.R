@@ -240,3 +240,140 @@ test_that("covariates/beta are formal arguments and cannot be supplied a second 
         "formal argument"
     )
 })
+
+# ---- 9. covariates/beta combined with a caller-supplied dosing `data`
+# (simttepower feedback 1: lp/data merge,
+# reports/04_author_decisions.md; reports/29_simttepower_feedback_lp_merge.md) ----
+#
+# Before the fix, plain dplyr::bind_rows(data, cov_rows) left every
+# dosing row's `lp` NA (only cov_rows has that column), which is not
+# merely an mrgsolve::valid_data_set() warning: mrgsolve does not carry
+# a NA $PARAM value forward the way it carries a real one, so once `lp`
+# went NA at a data-set record, the p11 ODE state itself became (and
+# permanently stayed) NaN for the rest of that subject's trajectory --
+# silently turning a real later event into administrative censoring.
+# See reports/experiments/29_lp_na_mechanism.R for the direct
+# mrgsolve-level demonstration. .merge_ode_covariate_rows() now fills
+# every dosing row's `lp` by LOCF against that subject's own covariate
+# trajectory, and sorts the merged frame by ID/time (also fixing a
+# separate failure mode: mrgsolve erroring "the data set is not sorted
+# by time", or silently splitting a subject's rows into two disjoint
+# blocks, when the unsorted merge put a dosing row after a
+# time-earlier covariate row in the raw bind_rows() order).
+
+# Time-varying covariates (age constant, trt_on switches on at t = 8)
+# combined with a 4-dose repeat regimen (t = 0, 4, 12, 16) -- dosing
+# rows straddle the covariate update, exercising the LOCF fill on both
+# sides of it.
+.lp_merge_fixture <- function(n, seed = 1) {
+    set.seed(seed)
+    age <- stats::runif(n, 40, 80)
+    covdat <- data.frame(ID = rep(seq_len(n), each = 2),
+        time = rep(c(0, 8), n), age = rep(age, each = 2),
+        trt_on = rep(c(0, 1), n))
+    dosing <- data.frame(ID = rep(seq_len(n), each = 4),
+        time = rep(c(0, 4, 12, 16), n), evid = 1L, amt = 100, cmt = 1L)
+    list(covdat = covdat, dosing = dosing, beta = c(age = 0.01, trt_on = 0.3))
+}
+
+check_lp_merge_matches_hand_built_oracle <- function(n) {
+    fx <- .lp_merge_fixture(n)
+    param <- .PKPD_TEST_DEFAULT_PARAM$pk_hazard
+
+    actual <- expect_no_warning(
+        sim_tte_ode(model = "pk_hazard", param = param, n = n, end = 20,
+            delta = 1, data = fx$dosing, covariates = fx$covdat,
+            beta = fx$beta, keep_trajectory = TRUE, seed = 11))
+
+    # Independent oracle: pre-fill `lp` on the dosing rows by hand
+    # (LOCF against the covariate-update times/lp values, not via
+    # .merge_ode_covariate_rows()) and pass the merged, sorted data
+    # straight through `data` with `covariates = NULL` -- a code path
+    # the merge fix never touches.
+    cov_rows <- simtte:::.build_ode_covariate_rows(fx$covdat, fx$beta,
+        n_subjects = n, end = 20)
+    dosing_lp <- fx$dosing
+    dosing_lp$lp <- vapply(seq_len(nrow(dosing_lp)), function(i) {
+        traj <- cov_rows[cov_rows$ID == dosing_lp$ID[i], ]
+        traj$lp[max(which(traj$time <= dosing_lp$time[i]))]
+    }, numeric(1))
+    oracle_data <- rbind(dosing_lp, cov_rows)
+    oracle_data <- oracle_data[order(oracle_data$ID, oracle_data$time), ]
+    oracle <- sim_tte_ode(model = "pk_hazard", param = param, n = n,
+        end = 20, delta = 1, data = oracle_data, keep_trajectory = TRUE,
+        seed = 11)
+
+    expect_equal(actual$trajectory$HAZ, oracle$trajectory$HAZ,
+        tolerance = 1e-10)
+    expect_equal(actual$events, oracle$events)
+}
+
+test_that("covariates + beta + custom dosing data: trajectory matches a hand-built LOCF oracle, zero warnings [fast]", {
+    skip_on_cran()
+    skip_if_not_installed("mrgsolve")
+    check_lp_merge_matches_hand_built_oracle(n = 5)
+})
+test_that("covariates + beta + custom dosing data: trajectory matches a hand-built LOCF oracle, zero warnings [slow]", {
+    skip_on_cran()
+    skip_if_not_installed("mrgsolve")
+    skip_if_not_slow()
+    check_lp_merge_matches_hand_built_oracle(n = 60)
+})
+
+test_that("baseline (single-row-per-subject) covariates + custom dosing data also produce zero warnings", {
+    skip_on_cran()
+    skip_if_not_installed("mrgsolve")
+    n <- 4
+    covdat <- data.frame(ID = 1:n, time = 0, age = c(40, 50, 60, 70))
+    dosing <- .pkpd_dose_data(n)
+    expect_no_warning(
+        sim_tte_ode(model = "pk_hazard",
+            param = .PKPD_TEST_DEFAULT_PARAM$pk_hazard, n = n, end = 10,
+            delta = 1, data = dosing, covariates = covdat,
+            beta = c(age = 0.01), seed = 3))
+})
+
+test_that("a 'data' column named 'lp' conflicting with covariates/beta errors clearly", {
+    dosing <- .pkpd_dose_data(2)
+    dosing$lp <- 0
+    expect_error(
+        sim_tte_ode(model = "pk_hazard",
+            param = .PKPD_TEST_DEFAULT_PARAM$pk_hazard, n = 2, end = 10,
+            delta = 1, data = dosing,
+            covariates = data.frame(ID = 1:2, time = 0, age = c(50, 60)),
+            beta = c(age = 0.01), seed = 1),
+        "already has an 'lp' column"
+    )
+})
+
+test_that("'data' with an unlabeled (no-ID) dosing row errors, regardless of whether covariates vary by subject", {
+    dosing <- data.frame(time = 0, cmt = 1, amt = 100, evid = 1) # no ID
+    expect_error(
+        sim_tte_ode(model = "pk_hazard",
+            param = .PKPD_TEST_DEFAULT_PARAM$pk_hazard, n = 2, end = 10,
+            delta = 1, data = dosing,
+            covariates = data.frame(ID = 1:2, time = 0, age = c(50, 90)),
+            beta = c(age = 0.01), seed = 1),
+        "must have an 'ID' column"
+    )
+    expect_error(
+        sim_tte_ode(model = "pk_hazard",
+            param = .PKPD_TEST_DEFAULT_PARAM$pk_hazard, n = 3, end = 10,
+            delta = 1, data = dosing,
+            covariates = data.frame(time = 0, age = 60),
+            beta = c(age = 0.01), seed = 1),
+        "must have an 'ID' column"
+    )
+})
+
+test_that("'data' with an ID not present in covariates errors", {
+    dosing <- data.frame(ID = 3, time = 0, cmt = 1, amt = 100, evid = 1)
+    expect_error(
+        sim_tte_ode(model = "pk_hazard",
+            param = .PKPD_TEST_DEFAULT_PARAM$pk_hazard, n = 2, end = 10,
+            delta = 1, data = dosing,
+            covariates = data.frame(ID = 1:2, time = 0, age = c(50, 60)),
+            beta = c(age = 0.01), seed = 1),
+        "not present in 'covariates'"
+    )
+})

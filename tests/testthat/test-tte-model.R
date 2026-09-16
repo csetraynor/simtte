@@ -276,16 +276,17 @@ test_that("a converted model composes with covariates/beta and dosing data [slow
     n <- 40
     dose <- .pkpd_dose_data(n)
     cov <- data.frame(time = c(0, 5), sex = c(0, 1))
-    # mrgsolve warns "Parameter column lp must not contain missing
-    # values" here because the dosing rows (from 'data') carry no 'lp'
-    # column while the covariate-update rows do; reproduces identically
-    # with a shipped *_hazard.cpp model (not a Phase 5a regression, and
-    # out of scope to fix in this session -- pre-existing
-    # covariates+dosing interaction) -- expected, not suppressed, so a
-    # real new warning here would still fail the test.
-    expect_warning(sim <- sim_tte_ode(model = tm, n = n, end = 20,
+    # Used to warn "Parameter column lp must not contain missing
+    # values" here (the dosing rows from 'data' carried no 'lp' column
+    # while the covariate-update rows did) -- fixed by
+    # .merge_ode_covariate_rows() (simttepower feedback 1: lp/data
+    # merge, reports/29_simttepower_feedback_lp_merge.md), which fills
+    # 'lp' on every dosing row by LOCF before the two are combined, for
+    # a tte_model()-converted model exactly as for a shipped
+    # *_hazard.cpp one.
+    sim <- expect_no_warning(sim_tte_ode(model = tm, n = n, end = 20,
         delta = 2, data = dose, covariates = cov, beta = c(sex = 0.5),
-        seed = 1), "lp must not contain missing values")
+        seed = 1))
     expect_equal(nrow(sim$events), n)
     expect_true(all(sim$events$sim_status %in% c(0L, 1L)))
 })

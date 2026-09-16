@@ -676,7 +676,7 @@ sim_tte_ode <- function(model, param = list(), omega = NULL, sigma = NULL,
             .build_ode_covariate_rows(covariates, beta,
                 n_subjects = nrow(idata), end = end)
         }
-        data <- dplyr::bind_rows(data, cov_rows)
+        data <- .merge_ode_covariate_rows(data, cov_rows)
     }
 
     out <- as.data.frame(mrgsolve::mrgsim(mod, idata = idata, data = data,
