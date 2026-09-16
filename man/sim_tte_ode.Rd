@@ -452,6 +452,14 @@ piecewise-constant-on-a-fixed-grid closed form). \strong{Limitation}:
 when \code{covariates} has an \code{ID} column, it must equal
 \code{1:nrow(idata)} exactly -- subject-specific covariates for a
 non-default (non-\code{1:n}) subject numbering are not yet supported.
+\strong{Combining with \code{data}}: when a dosing \code{data} is
+also supplied, every dosing record's \code{lp} is filled with the
+covariate value already in force for that subject at that time (the
+same last-observation-carried-forward rule as above), so a dosing
+regimen and time-varying covariates compose freely, with no
+\pkg{mrgsolve} warning. \code{data} already carrying its own
+\code{lp} column is an error (which value should apply at a dosing
+record would otherwise be ambiguous).
 
 \strong{Legacy form} (\code{formula} not supplied): every name in \code{beta} must be a raw numeric column of
 \code{covariates}, used as-is -- no factor coding, interactions, or

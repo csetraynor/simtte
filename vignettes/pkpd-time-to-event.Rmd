@@ -137,6 +137,37 @@ PK/PD states, BSV, and dosing directly, and can be varied like any
 other model parameter. A *fixed* `EC50` gives the identical event-time
 distribution written either way; only the second way lets `EC50` vary.
 
+### Combining dosing data with covariates
+
+A dosing regimen (`data`) and `covariates` on the same call is the
+common case for a real trial simulation, and works exactly as either
+does alone: `lp` is combined with the model's own PK/PD-driven hazard,
+carried onto every dosing record from the covariate value in force at
+that time (last-observation-carried-forward, the same convention used
+everywhere else in this vignette) -- no `mrgsolve` warning is emitted.
+
+```{r dose-and-covariate}
+dose_regimen <- mrgsolve::expand.ev(ID = 1:6, amt = 100, cmt = 1,
+  ii = 12, addl = 3, time = 0)
+age <- data.frame(age = c(40, 50, 60, 70, 80, 90))
+sim_dose_cov <- sim_tte_ode(model = "pk_hazard",
+  param = list(H0 = 0.01, beta_cp = 0.02), n = 6, end = 48, delta = 2,
+  data = dose_regimen, covariates = age, formula = ~ age,
+  beta = c(age = 0.01), seed = 1, keep_trajectory = TRUE)
+head(sim_dose_cov$events)
+```
+
+At `time = 0`, plasma concentration `CP` is still `0` for every
+subject (the dose has just been given), so `HAZ = H0 * exp(lp +
+beta_cp * CP)` reduces to `H0 * exp(lp)` there -- directly showing each
+subject's own `age`-driven `lp` already in force at that very first,
+dosing record:
+
+```{r dose-and-covariate-check}
+t0 <- subset(sim_dose_cov$trajectory, time == 0)
+cbind(t0[, c("ID", "CP", "HAZ")], age = age$age)
+```
+
 ## 4. Between-subject variability
 
 Between-subject variability (BSV) on a structural PK/PD parameter

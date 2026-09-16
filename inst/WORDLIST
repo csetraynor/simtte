@@ -32,6 +32,7 @@ dispatchable
 doi
 dt
 dxdt
+erroring
 et
 filesystem
 frac
@@ -39,6 +40,7 @@ gompertz
 ignorable
 immunotherapy
 le
+lp
 lsoda
 mathbf
 mathrm
