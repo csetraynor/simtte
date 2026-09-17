@@ -173,15 +173,31 @@ way it is written.
 
 Every `tte_model()` conversion is a real C++ compile (a few seconds).
 `mrgsolve::mcode_cache()` (used internally) skips recompiling an
-unchanged, previously-seen model within the same cache directory --
-`options(mrgsolve.project = <a persistent directory>)` makes that
-cache survive across R sessions too, worthwhile if you reconvert the
-same model many times (e.g. a simulation study script re-run
-repeatedly). Two caveats: a caller-supplied `name` reused for
+unchanged, previously-seen model within the same session. To make that
+survive across R sessions too (worthwhile if you reconvert the same
+model many times, e.g. a simulation study script re-run repeatedly),
+set `options(simtte.cache_dir = tools::R_user_dir("simtte", "cache"))`
+-- see `?simtte_model_cache` for the persistence/versioning details, and
+`?simtte_model_cache_clear` to remove what accumulates there (e.g.
+after an R/simtte/mrgsolve upgrade); avoid pointing `mrgsolve`'s own
+`mrgsolve.project`/`mrgsolve.soloc`
+options at a shared directory yourself (see the next paragraph for
+why). One caveat either way: a caller-supplied `name` reused for
 genuinely different `hazard`/`params` content, called back to back,
 can in principle collide within the same build directory (leave
 `name` at its default, which avoids this by construction, since it is
-derived from a hash of the converted code); and in a
-parallel workflow, give each worker its own cache directory, or simply
-let each one recompile -- the compile cost is small next to the
-parallel speed-up.
+derived from a hash of the converted code).
+
+**Parallel workflow**: don't have each worker convert/compile the
+model independently, and don't point every worker's `mrgsolve.soloc`
+at one shared directory hoping for a cross-worker cache hit -- measured
+directly (`reports/30_simttepower_feedback_worker_loading.md`):
+multiple workers compiling the *same* not-yet-built model into a
+shared directory at the same moment fails intermittently, and even
+after it is fully built, a worker *re-compiling* it against that
+shared directory a second time still can. Convert the model once (in
+the parent, or however many times you like sequentially), call
+`simtte_prepare_model()` on the result, and broadcast *that* to every
+worker -- see `?sim_tte_ode` "Parallel simulation" for the full
+pattern. A worker that only ever calls `loadso()` on an
+already-compiled object cannot race with anything.

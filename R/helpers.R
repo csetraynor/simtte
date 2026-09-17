@@ -660,7 +660,8 @@
 #' @return Compiled mrgsolve model object.
 #' @noRd
 .read_ode_library_model_file <- function(file) {
-    mrgsolve::mread_cache(model = file, project = .cfile_dir("library"))
+    mrgsolve::mread_cache(model = file, project = .cfile_dir("library"),
+        soloc = simtte_model_cache())
 }
 
 #' Load (and cache) a bundled sim_tte_ode() library model

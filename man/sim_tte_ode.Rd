@@ -623,6 +623,80 @@ without its own \code{seed} argument, is insensitive to any
 reproduces both regardless of draw order.
 }
 
+\section{Parallel simulation}{
+
+\code{model} is a character library name or a \code{simtte_model}
+every time; either way, \code{sim_tte_ode()} builds (or reuses an
+already-built) compiled \pkg{mrgsolve} model and \code{\link[mrgsolve]{loadso}}s
+it before simulating -- always, whether or not you prepare anything
+yourself. On a single process this needs no attention. On a
+\code{\link[parallel]{makePSOCKcluster}} worker -- a separate R
+process, with no memory of what the parent process already built --
+each worker independently paying its own first-call compile cost is
+not wrong, just wasteful (harmless for a fast-compiling built-in
+model; can be a real cost, up to a couple of seconds, for a
+\code{\link{tte_model}}-converted one).
+
+\code{\link{simtte_prepare_model}} builds a model once and returns
+an object \code{sim_tte_ode()} never rebuilds; call it once per
+worker at cluster initialization, then pass its return value as
+\code{model} in every later \code{sim_tte_ode()} call on that
+worker:
+\preformatted{
+cl <- parallel::makePSOCKcluster(2)
+parallel::clusterCall(cl, simtte::simtte_prepare_model,
+  model = "irm1_hazard")
+results <- parallel::parLapply(cl, seeds, function(s) {
+  sim_tte_ode(model = "irm1_hazard", param = list(H0 = 0.01, beta_r = 1),
+    n = 50, end = 30, delta = 2, seed = s)
+})
+parallel::stopCluster(cl)
+}
+For a \code{\link{tte_model}}-converted model, build it \emph{once}
+in the parent and broadcast the already-compiled object instead of
+having every worker convert/compile it independently:
+\preformatted{
+tm <- tte_model(my_model, hazard = "H0 * exp(lp + beta * CP)",
+  params = list(H0 = 0.01, beta = 0))
+prepared <- simtte_prepare_model(tm)
+parallel::clusterCall(cl, simtte::simtte_prepare_model, model = prepared)
+results <- parallel::parLapply(cl, seeds, function(s) {
+  sim_tte_ode(model = prepared, n = 50, end = 30, delta = 2, seed = s)
+})
+}
+This is also the only pattern verified race-free under repeated,
+fresh-cache stress testing: a worker that only ever calls
+\code{loadso()} on an already-compiled object cannot race (a pure
+read, never a write), unlike a worker independently re-triggering
+its own build against a directory another process might be writing
+to at the same time -- see the investigation report cited below for
+the measurements.
+
+For \code{model = "mspline"}, \code{\link{simtte_prepare_model}} only
+takes \code{knots} (only its \emph{length} matters -- it selects
+which shipped variant is compiled); \code{coefs}/\code{boundary_knots}
+are supplied to \code{sim_tte_ode()} as usual, not to
+\code{simtte_prepare_model()} (see \code{\link{simtte_prepare_model}}'s
+own documentation for why).
+
+\strong{Fork clusters} (\code{\link[parallel]{mclapply}}, Unix-only):
+a forked worker inherits the parent process's memory directly,
+compiled model included, so none of the above is needed -- simulate
+immediately, with no \code{simtte_prepare_model()}/\code{clusterCall()}
+step at all.
+
+\code{\link{simtte_model_cache}} controls where a model is built
+(default: a directory under \code{\link[base]{tempdir}()}, i.e.
+session-scoped and CRAN-safe); see its own documentation for
+persisting a compiled model across R sessions, and
+\code{\link{simtte_model_cache_clear}} to remove what accumulates
+there (e.g. after an R/simtte/mrgsolve upgrade, for a persistent
+cache).
+\code{sim_tte_ode()}/\code{simtte_prepare_model()} never call
+\code{options()} themselves -- \code{mrgsolve.project}/\code{mrgsolve.soloc}
+are passed explicitly, never set globally on your behalf.
+}
+
 \examples{
 \donttest{
 sim <- sim_tte_ode(model = "exponential", param = list(H0 = 0.1),
@@ -634,6 +708,11 @@ head(sim$events)
 \code{\link{sim_tte}}, \code{\link{sim_tte_df}}, for the
   grid-based mechanism this function does not replace.
   \code{\link{tte_model}}, to bring in a user-supplied PK/PD model.
+  \code{\link{simtte_prepare_model}}, \code{\link{simtte_model_cache}},
+  \code{\link{simtte_model_cache_clear}}, for parallel simulation (see
+  "Parallel simulation" above;
+  \code{reports/30_simttepower_feedback_worker_loading.md} for the
+  full investigation).
   \code{\link{add_censoring}}, the function \code{censoring} calls
   internally (usable standalone, and on \code{sim_tte()}/
   \code{sim_tte_df()} output too). \code{\link{add_interval_censoring}}/

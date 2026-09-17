@@ -300,6 +300,40 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   intercept that expands a factor to all its levels (R's own
   `model.matrix()` convention for the first such factor) now names it
   in a `message()`.
+* **Supported model loading for parallel workers**:
+  `simtte_prepare_model(model, ...)` builds (or reuses an already-built)
+  and `loadso()`s a model once, returning an object `sim_tte_ode()`
+  never rebuilds -- call it once per `parallel::makePSOCKcluster()`
+  worker at cluster initialization (`parallel::clusterCall(cl,
+  simtte::simtte_prepare_model, model = ...)`), then pass the same
+  `model =` value to every later `sim_tte_ode()` call on that worker.
+  `sim_tte_ode()` uses the same function internally for every `model`
+  it is given, character name or `tte_model()`-converted alike -- there
+  is exactly one model-loading path, whether or not a caller prepares
+  anything ahead of time, and every path now calls
+  `mrgsolve::loadso()` unconditionally (previously only relevant, and
+  absent, for a worker scenario at all). `simtte_model_cache()` reports
+  (and, by default, session-scopes under `tempdir()`) where a compiled
+  model is built and stored; set `options(simtte.cache_dir =
+  tools::R_user_dir("simtte", "cache"))` to persist it across R
+  sessions. See `?sim_tte_ode` "Parallel simulation" for the intended
+  cluster-init pattern, and
+  `reports/30_simttepower_feedback_worker_loading.md` for the
+  investigation and measurements behind it (a naive shared-cache-directory
+  approach was found to race intermittently -- reproduced directly,
+  4/5 and 6/15 failures under two different concurrent-build/reconstruct
+  patterns -- which this design avoids by construction, not a retry).
+  For `model = "mspline"`, `simtte_prepare_model()` takes only `knots`
+  (only its length -- which shipped variant to compile -- matters at
+  prepare time); `coefs`/`boundary_knots` are not parameters of this
+  function and error, naming the argument, if supplied.
+* **`simtte_model_cache_clear(all = FALSE)`**: removes compiled model
+  artifacts built under `simtte_model_cache()` -- by default just the
+  current R/simtte/mrgsolve version's subdirectory, or every version
+  subdirectory with `all = TRUE` (for a persistent `simtte.cache_dir`
+  that has accumulated subdirectories across upgrades). Only ever
+  removes directories this package itself created; never the configured
+  base directory itself.
 
 ## Internal
 
