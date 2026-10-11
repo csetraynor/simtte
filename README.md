@@ -9,7 +9,6 @@
 status](https://www.r-pkg.org/badges/version/simtte)](https://CRAN.R-project.org/package=simtte)
 [![CRAN
 downloads](https://cranlogs.r-pkg.org/badges/simtte)](https://CRAN.R-project.org/package=simtte)
-[![R-CMD-check](https://github.com/csetraynor/simtte/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/csetraynor/simtte/actions/workflows/R-CMD-check.yaml)
 [![License: GPL (\>=
 2)](https://img.shields.io/badge/License-GPL%20%28%3E%3D%202%29-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 <!-- badges: end -->
