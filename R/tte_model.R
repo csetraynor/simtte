@@ -1,3 +1,41 @@
+#' Parse model code into named top-level blocks, with each block's own
+#' starting line number in \code{code}
+#'
+#' A compatibility shim for \code{mrgsolve::modelparse(code, drop_blank =
+#' FALSE, keep_mapping = TRUE)}: \code{keep_mapping} was added in
+#' mrgsolve 2.0.0 and does not exist in mrgsolve 1.5.x (still the version
+#' in use at MPN), where it raises "unused argument (keep_mapping =
+#' TRUE)". \code{\link{tte_model}} only needs \code{names()} (the block
+#' labels) and each block's starting line, never the block content.
+#'
+#' Calling the real, installed \code{modelparse(code, drop_blank =
+#' FALSE)} (just without \code{keep_mapping}) already gives correct
+#' names and, in each block's returned content, its exact line count --
+#' on every mrgsolve version, not just pre-2.0.0 ones, so this never
+#' needs to detect or branch on version at all. Blocks are returned as a
+#' gapless partition of \code{code} running through to its last line
+#' (verified against mrgsolve 1.5.2's own \code{modelparse()} source:
+#' every block's own \code{end} is the next block's \code{start - 1},
+#' and the last block's \code{end} is always \code{length(code)}), so
+#' each block's starting line falls out of simple arithmetic on
+#' \code{length(code)} and the content lengths \code{modelparse()}
+#' already returns -- no re-implementation of mrgsolve's own
+#' block-header matching needed.
+#'
+#' @param code Character vector, one line per element (the model source).
+#' @return \code{mrgsolve::modelparse(code, drop_blank = FALSE)}'s own
+#'   return value, with an integer \code{"start"} attribute added: the
+#'   1-based line number in \code{code} where each block's own header
+#'   line begins.
+#' @noRd
+.simtte_modelparse <- function(code) {
+    spec <- mrgsolve::modelparse(code, drop_blank = FALSE)
+    lens <- lengths(spec)
+    start1 <- length(code) - sum(lens) + 1L
+    attr(spec, "start") <- start1 + cumsum(c(0L, lens[-length(lens)]))
+    spec
+}
+
 #' Convert a PK/PD mrgsolve model into a `sim_tte_ode()`-ready model
 #'
 #' Writes the survival scaffold (\code{p11}, \code{U}, \code{END}, the
@@ -128,8 +166,7 @@ tte_model <- function(model, hazard, params = list(), name = NULL,
     norm <- .tte_model_normalize_code(model)
     code <- norm$code
 
-    blocks <- mrgsolve::modelparse(code, drop_blank = FALSE,
-        keep_mapping = TRUE)
+    blocks <- .simtte_modelparse(code)
     block_names <- names(blocks)
     .tte_model_check_ode_precondition(block_names)
 
@@ -143,7 +180,12 @@ tte_model <- function(model, hazard, params = list(), name = NULL,
     new_code <- .tte_model_splice(code, ops)
 
     name <- if (is.null(name)) .tte_model_default_name(new_code) else name
-    mod <- tryCatch(mrgsolve::mcode_cache(model = name, code = new_code),
+    # See the matching comment in .tte_model_reserved_name_check(): the
+    # line vector must be collapsed to one string before reaching
+    # mrgsolve's own code = argument, for the same mrgsolve-1.5.x
+    # new_build() reason.
+    mod <- tryCatch(mrgsolve::mcode_cache(model = name,
+        code = paste(new_code, collapse = "\n")),
         error = function(e) {
             stop("tte_model(): the converted model failed to compile: ",
                 conditionMessage(e), "\n\n--- converted model code ---\n",
@@ -311,8 +353,17 @@ print.simtte_model <- function(x, ...) {
 #' @return \code{TRUE}, invisibly, if no clash is found.
 #' @noRd
 .tte_model_reserved_name_check <- function(code, params) {
+    # code = paste(code, collapse = "\n"), not the line vector itself:
+    # mrgsolve 1.5.x's own mread()/new_build() writes 'code' to the model
+    # file via cat(code, "\n", file = ...) with cat()'s default (space)
+    # separator, which collapses a multi-element character vector onto
+    # one line and destroys the block structure modelparse() needs. A
+    # single string with embedded newlines is unaffected by that
+    # separator (nothing to separate) and is handled correctly by every
+    # mrgsolve version.
     base <- tryCatch(mrgsolve::mread(model = "simtte_tte_model_precheck",
-        code = code, project = tempdir(), compile = FALSE),
+        code = paste(code, collapse = "\n"), project = tempdir(),
+        compile = FALSE),
         error = function(e) {
             stop("tte_model(): the supplied model failed to parse: ",
                 conditionMessage(e), call. = FALSE)
