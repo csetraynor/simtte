@@ -1,3 +1,49 @@
+# Supported model loading for parallel workers ("simttepower feedback
+# 2: worker model loading", reports/04_author_decisions.md;
+# reports/30_simttepower_feedback_worker_loading.md). Investigated
+# directly (reports/experiments/30_worker_loading_test.R,
+# 30_worker_race_test.R, 30_worker_race_test2.R) before writing any of
+# this: mrgsolve's soloc (where a compiled model's shared object is
+# built/stored) defaults to tempdir(), which differs per R process, so
+# a PSOCK worker cannot find a model built by another process unless
+# either (a) the already-compiled model *object* is sent to it directly
+# (its soloc path travels with it, and a local worker sharing the
+# parent's filesystem can loadso() from that path with zero extra
+# setup -- verified directly), or (b) every process points soloc at the
+# same, shared, persistent directory. Reproduced the race
+# simttepower's Phase 1 report hit either way: (a) two workers
+# *compiling* the same not-yet-built model into a shared directory at
+# the same moment failed 4/5 trials; (b) even after that model is fully
+# built, a worker *reconstructing* it via a second mcode_cache() call
+# against the shared, already-built directory still failed 6/15 trials
+# (matching ../simttepower/reports/05_phase2_report.md section 2 item
+# 3's own "intermittent" finding, independently reproduced here) --
+# neither is a hypothetical, both measured directly. "Build once
+# (wherever that happens -- the parent, or a single call), then only
+# ever loadso() the already-compiled object elsewhere" avoids both:
+# loadso() is a pure read, never a write, so it cannot race with
+# itself, and 15/15 trials of exactly that pattern succeeded with no
+# retry.
+#
+# "simttepower feedback 3" follow-up (reports/31_simttepower_feedback_process_loading.md
+# "Task A"): the pattern above only helps within one already-running
+# cluster (workers that received a compiled object by serialization).
+# A genuinely separate process reading a tte_model()-converted model
+# back from disk (e.g. a chunked/array-job task reading a manifest,
+# after the building process already exited) hits the same class of
+# problem for a different reason: the converted model's compiled
+# shared object lives under the *building* process's own cache, gone
+# once that process exits. Reproduced directly
+# (reports/experiments/31_process_boundary_repro.R): a tte_model()
+# built and saveRDS()-ed in one process, read back in a genuinely
+# separate one (callr::r(), its own tempdir()), fails with mrgsolve's
+# own "[loadso] the model dll file doesn't exist". Fixed the same way
+# as the rest of this file's design: simtte_prepare_model() rebuilds a
+# converted model from its own $code/$name, into *this* process's own
+# simtte_model_cache(), whenever the object it was given does not
+# resolve here (see .load_converted_model() below) -- never a global
+# mrgsolve option, so correctness never depends on a shared filesystem.
+
 #' Where simtte builds and caches compiled models
 #'
 #' Resolves and returns the directory \code{\link{sim_tte_ode}} and
@@ -45,10 +91,10 @@
 #' \code{.so} built against a different, ABI-incompatible R/package
 #' version. The version key makes that class of staleness unreachable
 #' by construction rather than relying on \pkg{mrgsolve}'s own
-#' file-level staleness detection to catch it (which a prior session
-#' already found can be defeated by two builds landing in the same
-#' filesystem-timestamp second -- see \code{\link{tte_model}}'s own
-#' \code{name} documentation). The \strong{default}, \code{tempdir()}-based
+#' file-level staleness detection to catch it (which can be defeated by
+#' two builds landing in the same filesystem-timestamp second -- see
+#' \code{\link{tte_model}}'s own \code{name} documentation). The
+#' \strong{default}, \code{tempdir()}-based
 #' location needs no such protection on its own (a session cannot
 #' upgrade R or a package mid-run), but the key is applied unconditionally
 #' anyway, so there is exactly one code path to reason about, not two.
@@ -65,7 +111,8 @@ simtte_model_cache <- function() {
     base_dir <- getOption("simtte.cache_dir",
         file.path(tempdir(), "simtte-model-cache"))
     dir <- file.path(base_dir, .simtte_cache_version_tag())
-    if (!dir.exists(dir) && !dir.create(dir, recursive = TRUE)) {
+    if (!dir.exists(dir) &&
+        !suppressWarnings(dir.create(dir, recursive = TRUE))) {
         stop("simtte_model_cache() could not create its cache directory '",
             dir, "' -- check that '", base_dir, "' (from options(",
             "simtte.cache_dir = ...), or the default location under ",
@@ -142,7 +189,7 @@ simtte_model_cache <- function() {
 #' @noRd
 .load_ode_model <- function(model, is_converted, knots) {
     mod <- if (is_converted) {
-        model$mod
+        .load_converted_model(model)
     } else if (identical(model, "mspline")) {
         .read_ode_library_model_file(.mspline_file_for(length(knots)))
     } else {
@@ -150,6 +197,47 @@ simtte_model_cache <- function() {
     }
     mrgsolve::loadso(mod)
     mod
+}
+
+#' Return a \code{tte_model()}-converted model's compiled \code{mrgmod},
+#' usable in \emph{this} process
+#'
+#' A \code{simtte_model}'s \code{$mod} was \code{loadso()}-able in
+#' whichever process built it, but that model's compiled shared object
+#' lives wherever that process's own \code{mcode_cache()} call put it
+#' (\code{tte_model()} itself builds into
+#' \code{\link{simtte_model_cache}}, but a \code{simtte_model} built by
+#' an older \pkg{simtte} version, or otherwise, may not have) --
+#' invisible to a genuinely separate process (a different \code{tempdir()},
+#' possibly on a different machine entirely; see
+#' \code{reports/31_simttepower_feedback_process_loading.md} "Task A" for
+#' the reproduction). If \code{$mod} does not resolve here, this
+#' rebuilds it from \code{$code}/\code{$name} into \emph{this} process's
+#' own \code{\link{simtte_model_cache}} -- deterministic (same code, same
+#' name -> the same compiled model) and never a global \code{mrgsolve}
+#' option. On a filesystem the original process's cache directory *is*
+#' shared with (or, more commonly, when both processes independently
+#' target the same persistent \code{simtte.cache_dir}),
+#' \code{\link[mrgsolve]{mcode_cache}}'s own content-hash cache can turn
+#' this into a cache hit rather than a real recompile -- a bonus, never
+#' required for correctness.
+#'
+#' @param model A \code{simtte_model} (\code{\link{tte_model}}'s own
+#'   return value, or one otherwise carrying the same \code{$mod}/
+#'   \code{$code}/\code{$name} fields).
+#' @return A \code{mrgmod} guaranteed \code{loadso()}-able in this
+#'   process.
+#' @noRd
+.load_converted_model <- function(model) {
+    resolves_here <- tryCatch({
+        mrgsolve::loadso(model$mod)
+        TRUE
+    }, error = function(e) FALSE)
+    if (resolves_here) {
+        return(model$mod)
+    }
+    mrgsolve::mcode_cache(model = model$name, code = model$code,
+        soloc = simtte_model_cache())
 }
 
 #' Prepare a model for simulation on this process, once
@@ -175,22 +263,36 @@ simtte_model_cache <- function() {
 #' up to ~1.5s for a \code{tte_model()}-converted one, "Parallel
 #' simulation" section of \code{?sim_tte_ode}). Calling
 #' \code{simtte_prepare_model()} once per worker at cluster
-#' initialization avoids that redundant work \emph{and} is the
-#' pattern verified race-free (see this file's own top-of-file note,
-#' and \code{reports/experiments/30_worker_race_test.R}/
-#' \code{30_worker_race_test2.R}): a worker receiving an
-#' already-compiled model object (via ordinary \pkg{parallel}
-#' serialization -- \code{parallel::clusterCall()}/\code{clusterExport()}
-#' both work) and only ever calling \code{loadso()} on it never races,
-#' unlike a worker independently re-triggering \code{mcode_cache()}/
-#' \code{mread_cache()} against a directory another process might be
-#' writing to at the same time.
+#' initialization avoids that redundant work \emph{and} is the pattern
+#' verified race-free: a worker receiving an already-compiled model
+#' object (via ordinary \pkg{parallel} serialization --
+#' \code{parallel::clusterCall()}/\code{clusterExport()} both work) and
+#' only ever calling \code{loadso()} on it never races, unlike a worker
+#' independently re-triggering \code{mcode_cache()}/\code{mread_cache()}
+#' against a directory another process might be writing to at the same
+#' time.
 #'
 #' Idempotent: calling this on its own return value (exactly what
 #' happens when the same \code{model =} argument is broadcast to every
 #' worker via \code{clusterCall()}, each worker then calling this
 #' function on it again) only re-\code{loadso()}s (cheap, safe to
 #' repeat) and returns the object unchanged -- never a second build.
+#'
+#' \strong{A genuinely separate process} (not a \pkg{parallel} cluster
+#' worker that received the compiled object by serialization, but e.g.
+#' a chunked/array-job task reading a \code{\link{tte_model}} object
+#' back from a manifest file written by an earlier, already-exited
+#' process): a \code{simtte_model}'s compiled shared object lives
+#' wherever the \emph{building} process's own cache put it, which a
+#' later process cannot see. Calling this function there rebuilds it
+#' from \code{$code}/\code{$name} automatically, into \emph{this}
+#' process's own \code{\link{simtte_model_cache}} -- deterministic (the
+#' same code and name always produce the same compiled model), and
+#' never a global \code{mrgsolve} option, so correctness never depends
+#' on the two processes sharing a filesystem.
+#' A built-in library model needs no such rebuild (it is always
+#' (re)built from the shipped \code{.cpp} source into this process's
+#' own cache directly, every time).
 #'
 #' @param model A character library-model name (as
 #'   \code{\link{sim_tte_ode}}'s own \code{model} argument), a

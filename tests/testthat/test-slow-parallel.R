@@ -97,3 +97,95 @@ test_that("2-worker PSOCK cluster: prepare-at-init + parLapply(sim_tte_ode()), t
         }
     }
 })
+
+# ---- Genuinely separate processes ("simttepower feedback 3" Task A,
+# reports/31_simttepower_feedback_process_loading.md) ----
+#
+# The PSOCK-cluster tests above cover workers that receive an
+# already-compiled model *object* via ordinary parallel serialization
+# -- a different scenario from a chunked/array-job task that reads a
+# tte_model()-converted model back from disk in a process that shares
+# no memory, and no still-running parent, with whatever process built
+# it. callr::r() spawns a genuinely separate R process (its own
+# tempdir(), no shared state) to exercise exactly that.
+
+.simtte_process_boundary_build <- function(pkg_path, dev_loaded, lib_file) {
+    if (dev_loaded) {
+        pkgload::load_all(pkg_path, quiet = TRUE)
+    }
+    irm1 <- mrgsolve::mread(model = "pk2cmt",
+        project = system.file("models", package = "mrgsolve"),
+        compile = FALSE)
+    tm <- simtte::tte_model(irm1, hazard = "H0 * exp(lp + beta_cp * CP)",
+        params = list(H0 = 0.01, beta_cp = 0.02))
+    saveRDS(tm, lib_file)
+    invisible(NULL)
+}
+
+.simtte_process_boundary_use <- function(pkg_path, dev_loaded, lib_file, seed) {
+    if (dev_loaded) {
+        pkgload::load_all(pkg_path, quiet = TRUE)
+    }
+    before_project <- getOption("mrgsolve.project")
+    before_soloc <- getOption("mrgsolve.soloc")
+    tm <- readRDS(lib_file)
+    prepared <- simtte::simtte_prepare_model(tm)
+    sim <- simtte::sim_tte_ode(model = prepared, n = 10, end = 20, delta = 2,
+        seed = seed)
+    list(events = sim$events,
+        project_untouched = identical(getOption("mrgsolve.project"),
+            before_project),
+        soloc_untouched = identical(getOption("mrgsolve.soloc"),
+            before_soloc))
+}
+
+test_that("a tte_model()-converted model survives a genuinely separate process (not a live cluster) with no [loadso] failure, and matches a single-process run at the same seed", {
+    skip_on_cran()
+    skip_if_not_installed("mrgsolve")
+    skip_if_not_installed("callr")
+    if (.simtte_is_dev_loaded) skip_if_not_installed("pkgload")
+    skip_if_not_slow()
+
+    lib_file <- tempfile(fileext = ".rds")
+    callr::r(.simtte_process_boundary_build,
+        args = list(pkg_path = .simtte_pkg_path,
+            dev_loaded = .simtte_is_dev_loaded, lib_file = lib_file))
+
+    result <- callr::r(.simtte_process_boundary_use,
+        args = list(pkg_path = .simtte_pkg_path,
+            dev_loaded = .simtte_is_dev_loaded, lib_file = lib_file, seed = 1))
+
+    expect_true(result$project_untouched)
+    expect_true(result$soloc_untouched)
+
+    irm1 <- mrgsolve::mread(model = "pk2cmt",
+        project = system.file("models", package = "mrgsolve"),
+        compile = FALSE)
+    tm_local <- tte_model(irm1, hazard = "H0 * exp(lp + beta_cp * CP)",
+        params = list(H0 = 0.01, beta_cp = 0.02))
+    sim_local <- sim_tte_ode(model = tm_local, n = 10, end = 20, delta = 2,
+        seed = 1)
+    expect_identical(result$events, sim_local$events)
+})
+
+test_that("a built-in library model works the same way in a genuinely separate process, matching a single-process run", {
+    skip_on_cran()
+    skip_if_not_installed("mrgsolve")
+    skip_if_not_installed("callr")
+    if (.simtte_is_dev_loaded) skip_if_not_installed("pkgload")
+    skip_if_not_slow()
+
+    use_step <- function(pkg_path, dev_loaded, seed) {
+        if (dev_loaded) {
+            pkgload::load_all(pkg_path, quiet = TRUE)
+        }
+        simtte::sim_tte_ode(model = "exponential", param = list(H0 = 0.1),
+            n = 10, end = 20, delta = 2, seed = seed)$events
+    }
+    result <- callr::r(use_step, args = list(pkg_path = .simtte_pkg_path,
+        dev_loaded = .simtte_is_dev_loaded, seed = 1))
+
+    local <- sim_tte_ode(model = "exponential", param = list(H0 = 0.1),
+        n = 10, end = 20, delta = 2, seed = 1)$events
+    expect_identical(result, local)
+})

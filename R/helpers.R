@@ -885,6 +885,109 @@
     idata
 }
 
+#' Resolve \code{sim_tte_ode()}'s \code{n} against a dosing \code{data}
+#' frame's own IDs
+#'
+#' Mirrors \code{\link{.resolve_n_for_baseline_covariates}} for a
+#' dosing \code{data} frame: when \code{idata} is \code{NULL} and
+#' \code{data} has an \code{ID} column, \code{data}'s own unique \code{ID}
+#' set defines the subject count directly -- inferred from
+#' \code{length(unique(data$ID))} when the caller left \code{n}
+#' unresolved (its own default, not yet set by anything else), checked
+#' for an exact match otherwise (an explicit \code{n}, or one already
+#' resolved from \code{covariates}). \code{\link{.validate_n_against_dosing_data}}
+#' (below) still runs afterward regardless -- this function only saves
+#' a caller who supplies \code{data} but no \code{n}/\code{idata} at
+#' all from an otherwise-opaque \pkg{mrgsolve} error.
+#'
+#' @param data,idata As supplied to \code{\link{sim_tte_ode}}.
+#' @param n \code{sim_tte_ode()}'s own \code{n}, as supplied, defaulted,
+#'   or already resolved from \code{covariates}.
+#' @param n_resolved Logical: has \code{n} already been fixed by the
+#'   caller or by \code{\link{.resolve_n_for_baseline_covariates}} (so
+#'   this function should validate rather than silently infer)?
+#' @return The resolved \code{n}.
+#' @noRd
+.resolve_n_for_dosing_data <- function(data, idata, n, n_resolved) {
+    if (!is.null(idata) || is.null(data) || !nrow(data) ||
+        !"ID" %in% names(data)) {
+        return(n)
+    }
+    n_data <- length(unique(data$ID))
+    if (n_resolved && n != n_data) {
+        stop("'n' (", n, ") does not match the number of unique 'ID' ",
+            "values in 'data' (", n_data, "). Supply a matching 'n', or ",
+            "omit 'n' and let it be inferred from 'data'.", call. = FALSE)
+    }
+    n_data
+}
+
+#' Validate \code{sim_tte_ode()}'s resolved \code{idata} against a
+#' dosing \code{data} frame
+#'
+#' Finding 5.3.2 (\code{reports/31_simttepower_feedback_process_loading.md}
+#' "Task B"): without this check, a mismatch between the resolved
+#' subject count (from \code{n}, \code{idata}, or covariate inference)
+#' and \code{data}'s own unique \code{ID} set previously either silently
+#' dropped subjects (more resolved subjects than \code{data} IDs --
+#' \pkg{mrgsolve} simulates only the IDs present in \code{data}, no
+#' warning) or failed with \pkg{mrgsolve}'s own opaque \code{"ID found
+#' in the data set, but not in idata"} (fewer). Checked here, against
+#' the \strong{original}, caller-supplied \code{data} -- before any
+#' covariate-row merge (\code{\link{.merge_ode_covariate_rows}}), which
+#' always appends a row for every \code{idata} \code{ID} and would
+#' otherwise mask exactly the mismatch this is meant to catch.
+#'
+#' A \code{data} with \strong{no} \code{ID} column at all is a
+#' different, related failure mode -- with more than one resolved
+#' subject, \pkg{mrgsolve} cannot tell which subject a dosing row
+#' belongs to, which silently drops subjects from the result the same
+#' way (verified directly: \code{n = 2}, an ID-less \code{data}, returns
+#' only 1 subject's events, no warning) -- so this errors on that too,
+#' rather than only on a \code{data} that does have an \code{ID} column.
+#'
+#' @param idata \code{\link{.build_ode_idata}}'s output.
+#' @param data As supplied to \code{\link{sim_tte_ode}} (before any
+#'   covariate merge).
+#' @return \code{TRUE}, invisibly, if \code{data} is \code{NULL}/empty,
+#'   or its ID set matches \code{idata} exactly (or there is exactly one
+#'   resolved subject, for which an ID-less \code{data} is unambiguous).
+#' @noRd
+.validate_n_against_dosing_data <- function(idata, data) {
+    if (is.null(data) || !nrow(data)) {
+        return(invisible(TRUE))
+    }
+    if (!"ID" %in% names(data)) {
+        if (nrow(idata) > 1L) {
+            stop("'data' has no 'ID' column, but sim_tte_ode() resolved ",
+                nrow(idata), " subjects (from 'n'/'idata'). Without an ",
+                "'ID' column, mrgsolve cannot tell which subject each ",
+                "dosing row belongs to, which silently drops subjects ",
+                "from the result. Add an 'ID' column to 'data' (one ",
+                "group per subject, covering every resolved subject), or ",
+                "simulate one subject at a time.", call. = FALSE)
+        }
+        return(invisible(TRUE))
+    }
+    data_ids <- unique(data$ID)
+    if (length(data_ids) != nrow(idata)) {
+        stop("'data' has ", length(data_ids), " unique 'ID' value(s), but ",
+            "sim_tte_ode() resolved ", nrow(idata), " subject(s) (from ",
+            "'n'/'idata'). The two must match exactly when a dosing ",
+            "'data' is supplied -- every subject must have exactly one ",
+            "dosing 'ID' group, and vice versa. Supply a matching 'n' (or ",
+            "'idata'), or adjust 'data'.", call. = FALSE)
+    }
+    unknown <- setdiff(data_ids, idata$ID)
+    if (length(unknown)) {
+        stop("'data' has ID(s) not present in the resolved 'idata' (from ",
+            "'n'/'idata'): ", paste(unknown, collapse = ", "), ". Every ",
+            "subject dosed via 'data' must also have an 'idata' row.",
+            call. = FALSE)
+    }
+    invisible(TRUE)
+}
+
 #' Build sim_tte_ode() time-varying-covariate rows from named covariates
 #'
 #' Generalizes \code{sim_tte()}'s single-covariate \code{lp_data}

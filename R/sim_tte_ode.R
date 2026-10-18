@@ -63,7 +63,11 @@
 #'   covariate frame (see "Covariates and the linear predictor" below)
 #'   has more than one row -- supplying \code{n} explicitly in that case
 #'   is only valid if it matches that row count exactly (an error names
-#'   both numbers otherwise).
+#'   both numbers otherwise). When a dosing \code{data} with an \code{ID}
+#'   column is also supplied, \code{n} (or \code{idata}'s row count) must
+#'   equal \code{length(unique(data$ID))} exactly -- inferred from it
+#'   when \code{n}/\code{idata} are both left unresolved, checked
+#'   otherwise (an error names both numbers; see \code{data} below).
 #' @param end Numeric scalar. Administrative censoring horizon. Written
 #'   into the model's \code{END} parameter for every subject that does
 #'   not already supply its own \code{END} column in \code{idata}, and
@@ -88,7 +92,18 @@
 #'   \code{\link[mrgsolve]{mrgsim}}'s own \code{data} argument. If
 #'   \code{covariates} is also supplied, the covariate-update rows built
 #'   from it are appended to \code{data} (see "Covariates and the
-#'   linear predictor" below); either or both may be \code{NULL}.
+#'   linear predictor" below); either or both may be \code{NULL}. When
+#'   supplied together with more than one resolved subject, \code{data}
+#'   must have an \code{ID} column whose unique values equal the
+#'   resolved subject set (from \code{n}/\code{idata}) exactly -- every
+#'   subject dosed via \code{data} must have exactly one \code{idata}/
+#'   \code{n} row, and vice versa (an error, checked before simulating,
+#'   names any mismatch and the fix). Before this check existed,
+#'   \code{n} exceeding \code{data}'s own \code{ID} count silently
+#'   dropped the extra subjects from the result with no warning, and
+#'   \code{n} short of it failed with \pkg{mrgsolve}'s own opaque
+#'   \code{"ID found in the data set, but not in idata"} -- both now
+#'   error immediately from here instead.
 #' @param covariates \code{NULL} (default) or a covariate data frame,
 #'   either baseline (one row per subject, no \code{time} column) or
 #'   time-varying (a \code{time} column, an optional \code{ID} column,
@@ -325,6 +340,19 @@
 #' as an error, not a silent extrapolation -- the same restriction
 #' \code{sim_tte(type = "ms")}'s own \code{end_time > max(time)} check
 #' already applies, for the same reason.
+#'
+#' @section Simulating from a Cox model:
+#' A Cox model specifies \eqn{h(t \mid X) = h_0(t) \exp(X\beta)} but
+#' leaves the baseline \eqn{h_0(t)} unspecified, so simulating from one
+#' requires choosing a baseline. \code{model = "mspline"} supplies a
+#' flexible one: its hazard is \code{exp(mu + lp) * sum_m coefs[m] *
+#' M_m(t)}, i.e. \eqn{h_0(t) = e^{\mu} \sum_m c_m M_m(t)} with
+#' covariates entering multiplicatively through \code{lp = X \%*\% beta}
+#' (see "Covariates and the linear predictor" below). The simulated
+#' data therefore satisfy proportional hazards exactly, and
+#' \code{survival::coxph()} fitted to them estimates \code{beta}. See
+#' \code{vignette("pkpd-time-to-event", package = "simtte")} for a
+#' worked example recovering \code{beta} this way.
 #'
 #' @section PK/PD-linked hazard models:
 #' Six library models link the hazard to a PK/PD quantity computed by a
@@ -630,9 +658,7 @@
 #'   \code{\link{tte_model}}, to bring in a user-supplied PK/PD model.
 #'   \code{\link{simtte_prepare_model}}, \code{\link{simtte_model_cache}},
 #'   \code{\link{simtte_model_cache_clear}}, for parallel simulation (see
-#'   "Parallel simulation" above;
-#'   \code{reports/30_simttepower_feedback_worker_loading.md} for the
-#'   full investigation).
+#'   "Parallel simulation" above).
 #'   \code{\link{add_censoring}}, the function \code{censoring} calls
 #'   internally (usable standalone, and on \code{sim_tte()}/
 #'   \code{sim_tte_df()} output too). \code{\link{add_interval_censoring}}/
@@ -715,9 +741,17 @@ sim_tte_ode <- function(model, param = list(), omega = NULL, sigma = NULL,
     }
     .check_weibull_shape_guardrail(mod, model)
 
+    n_before_cov <- n
     n <- .resolve_n_for_baseline_covariates(covariates, formula, idata, n,
         n_explicit)
+    # n_resolved: has n already been pinned by the caller or by
+    # baseline-covariates inference above? If so, .resolve_n_for_dosing_data()
+    # below must validate against 'data' rather than silently
+    # overwriting an n a different source already fixed.
+    n <- .resolve_n_for_dosing_data(data, idata, n,
+        n_resolved = n_explicit || !identical(n, n_before_cov))
     idata <- .build_ode_idata(idata, n = n, end = end)
+    .validate_n_against_dosing_data(idata, data)
     if (identical(model, "mspline") && max(idata$END) > boundary_knots[2]) {
         stop("'idata$END' exceeds boundary_knots[2] (", boundary_knots[2],
             ") for at least one subject -- see the 'end'/boundary_knots ",

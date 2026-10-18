@@ -52,22 +52,36 @@ first time (harmless for a fast-compiling built-in model; measured
 up to ~1.5s for a \code{tte_model()}-converted one, "Parallel
 simulation" section of \code{?sim_tte_ode}). Calling
 \code{simtte_prepare_model()} once per worker at cluster
-initialization avoids that redundant work \emph{and} is the
-pattern verified race-free (see this file's own top-of-file note,
-and \code{reports/experiments/30_worker_race_test.R}/
-\code{30_worker_race_test2.R}): a worker receiving an
-already-compiled model object (via ordinary \pkg{parallel}
-serialization -- \code{parallel::clusterCall()}/\code{clusterExport()}
-both work) and only ever calling \code{loadso()} on it never races,
-unlike a worker independently re-triggering \code{mcode_cache()}/
-\code{mread_cache()} against a directory another process might be
-writing to at the same time.
+initialization avoids that redundant work \emph{and} is the pattern
+verified race-free: a worker receiving an already-compiled model
+object (via ordinary \pkg{parallel} serialization --
+\code{parallel::clusterCall()}/\code{clusterExport()} both work) and
+only ever calling \code{loadso()} on it never races, unlike a worker
+independently re-triggering \code{mcode_cache()}/\code{mread_cache()}
+against a directory another process might be writing to at the same
+time.
 
 Idempotent: calling this on its own return value (exactly what
 happens when the same \code{model =} argument is broadcast to every
 worker via \code{clusterCall()}, each worker then calling this
 function on it again) only re-\code{loadso()}s (cheap, safe to
 repeat) and returns the object unchanged -- never a second build.
+
+\strong{A genuinely separate process} (not a \pkg{parallel} cluster
+worker that received the compiled object by serialization, but e.g.
+a chunked/array-job task reading a \code{\link{tte_model}} object
+back from a manifest file written by an earlier, already-exited
+process): a \code{simtte_model}'s compiled shared object lives
+wherever the \emph{building} process's own cache put it, which a
+later process cannot see. Calling this function there rebuilds it
+from \code{$code}/\code{$name} automatically, into \emph{this}
+process's own \code{\link{simtte_model_cache}} -- deterministic (the
+same code and name always produce the same compiled model), and
+never a global \code{mrgsolve} option, so correctness never depends
+on the two processes sharing a filesystem.
+A built-in library model needs no such rebuild (it is always
+(re)built from the shipped \code{.cpp} source into this process's
+own cache directly, every time).
 }
 \examples{
 \donttest{

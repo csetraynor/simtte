@@ -278,7 +278,38 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   `covariates`/`beta`/`formula` with a custom dosing `data` should be
   re-run; every other `sim_tte_ode()`/`sim_tte()` call path is
   untouched. Found and reported by the `simttepower` companion
-  package's Phase 1 integration testing.
+  package's own integration testing.
+* **`sim_tte_ode()`: a dosing `data` frame whose unique `ID`s don't
+  exactly match the resolved subject count (`n`/`idata`) now errors
+  immediately, naming both numbers, instead of silently dropping
+  subjects (`n` too large -- no warning) or failing with `mrgsolve`'s
+  own opaque `"ID found in the data set, but not in idata"` (`n` too
+  small). `data` supplied without an explicit `n`/`idata` now infers
+  the subject count from `length(unique(data$ID))` directly, rather
+  than defaulting to a single subject. `data` with no `ID` column at
+  all is likewise now an error whenever more than one subject is
+  resolved (previously also silently dropped subjects). **New in this
+  (still unreleased) 1.1.0; no CRAN-released behavior is affected.**
+  Found and reported by the `simttepower` companion package's own
+  testing.
+* **`tte_model()`-converted models now survive a genuinely separate
+  process.** A model built in one R process and used in a different one
+  (a chunked/array-job task reading a saved `tte_model()` object back
+  from disk, with no still-running parent process) previously failed
+  with `mrgsolve`'s own `"[loadso] the model dll file doesn't exist"`
+  -- the converted model's compiled shared object lived under the
+  *building* process's own cache, gone once that process exited.
+  `simtte_prepare_model()` now rebuilds a converted model from its own
+  `$code`/`$name`, into the *current* process's own
+  `simtte_model_cache()`, whenever the object it was given does not
+  resolve there -- deterministic, and never a global `mrgsolve` option,
+  so correctness never depends on the two processes sharing a
+  filesystem. `tte_model()` itself now also builds into
+  `simtte_model_cache()` (previously `mrgsolve`'s own default), so a
+  persistent `simtte.cache_dir` shared across processes can turn this
+  into a cache hit rather than a real recompile. **New in this (still
+  unreleased) 1.1.0; no CRAN-released behavior is affected.** Found and
+  reported by the `simttepower` companion package's own testing.
 
 ## Public API additions
 
@@ -317,12 +348,10 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   model is built and stored; set `options(simtte.cache_dir =
   tools::R_user_dir("simtte", "cache"))` to persist it across R
   sessions. See `?sim_tte_ode` "Parallel simulation" for the intended
-  cluster-init pattern, and
-  `reports/30_simttepower_feedback_worker_loading.md` for the
-  investigation and measurements behind it (a naive shared-cache-directory
-  approach was found to race intermittently -- reproduced directly,
-  4/5 and 6/15 failures under two different concurrent-build/reconstruct
-  patterns -- which this design avoids by construction, not a retry).
+  cluster-init pattern. A naive shared-cache-directory approach was
+  found to race intermittently -- reproduced directly, 4/5 and 6/15
+  failures under two different concurrent-build/reconstruct patterns
+  -- which this design avoids by construction, not a retry.
   For `model = "mspline"`, `simtte_prepare_model()` takes only `knots`
   (only its length -- which shipped variant to compile -- matters at
   prepare time); `coefs`/`boundary_knots` are not parameters of this

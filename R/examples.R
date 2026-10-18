@@ -50,7 +50,9 @@
 #'     linear, so this model has an independent closed-form survival
 #'     function, making it a short, readable starting point for a custom
 #'     model as well as this package's validation anchor for mechanistic
-#'     hazard models (see \code{inst/validation/}).}
+#'     hazard models (see \code{inst/validation/} in the package's
+#'     source repository -- a developer-only directory, not installed
+#'     with the package).}
 #' }
 #'
 #' @return Character vector of example model names, suitable for passing

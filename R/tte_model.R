@@ -111,6 +111,16 @@
 #'   (\code{\link[mrgsolve]{omat}}), and the two never combine for the
 #'   same model.
 #'
+#' The compiled model is built into \code{\link{simtte_model_cache}}
+#' (never a global \code{mrgsolve} option). \strong{Using the result in
+#' a separate process} (a cluster worker, a chunked/array job task --
+#' see \code{?sim_tte_ode} "Parallel simulation"): pass this object to
+#' \code{\link{simtte_prepare_model}} there; it rebuilds from
+#' \code{$code} automatically if the compiled object this function
+#' returned does not resolve in that process (its shared object lives
+#' wherever \emph{this} process's own cache put it), so correctness
+#' never depends on the two processes sharing a filesystem.
+#'
 #' @return An object of class \code{"simtte_model"}, a list with
 #'   \code{code} (the converted model source, printable directly with
 #'   \code{cat(x$code, sep = "\n")}), \code{mod} (the compiled
@@ -185,7 +195,8 @@ tte_model <- function(model, hazard, params = list(), name = NULL,
     # mrgsolve's own code = argument, for the same mrgsolve-1.5.x
     # new_build() reason.
     mod <- tryCatch(mrgsolve::mcode_cache(model = name,
-        code = paste(new_code, collapse = "\n")),
+        code = paste(new_code, collapse = "\n"),
+        soloc = simtte_model_cache()),
         error = function(e) {
             stop("tte_model(): the converted model failed to compile: ",
                 conditionMessage(e), "\n\n--- converted model code ---\n",

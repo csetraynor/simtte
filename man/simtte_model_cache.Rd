@@ -56,10 +56,10 @@ mention of invalidating it across an R or package upgrade) -- a
 \code{.so} built against a different, ABI-incompatible R/package
 version. The version key makes that class of staleness unreachable
 by construction rather than relying on \pkg{mrgsolve}'s own
-file-level staleness detection to catch it (which a prior session
-already found can be defeated by two builds landing in the same
-filesystem-timestamp second -- see \code{\link{tte_model}}'s own
-\code{name} documentation). The \strong{default}, \code{tempdir()}-based
+file-level staleness detection to catch it (which can be defeated by
+two builds landing in the same filesystem-timestamp second -- see
+\code{\link{tte_model}}'s own \code{name} documentation). The
+\strong{default}, \code{tempdir()}-based
 location needs no such protection on its own (a session cannot
 upgrade R or a package mid-run), but the key is applied unconditionally
 anyway, so there is exactly one code path to reason about, not two.

@@ -262,6 +262,25 @@ fixed set of shipped interior-knot counts (3, 5, or 7); `sim_tte(type
 piecewise-constant on its own reporting grid instead. Use whichever
 property you need more.
 
+The M-spline model is also how to **simulate from a Cox model**. A Cox
+model leaves the baseline hazard unspecified, so simulating requires
+choosing one; `"mspline"` gives a flexible baseline, and covariates
+multiply it by `exp(lp)`, so the data are proportional-hazards by
+construction and `survival::coxph()` recovers `beta`:
+
+```{r cox-via-mspline, eval = requireNamespace("survival", quietly = TRUE)}
+trt <- data.frame(ID = 1:400, time = 0, trt = rep(0:1, 200))
+sim <- sim_tte_ode(model = "mspline", knots = c(5, 10, 15),
+  coefs = c(0.2, 1, 0.5, 1.5, 0.8, 0.3), param = list(mu = -1.5),
+  n = 400, end = 20, delta = 1, covariates = trt, beta = c(trt = -0.5),
+  seed = 1)
+ev <- merge(sim$events, trt[c("ID", "trt")], by = "ID")
+fit <- survival::coxph(survival::Surv(sim_time, sim_status) ~ trt, data = ev)
+cbind(estimate = coef(fit), confint(fit))
+```
+
+The true `beta = -0.5` lies inside the 95% interval.
+
 ## 7. Backward compatibility
 
 `sim_tte()` and `sim_tte_df()` -- the original, closed-form/grid-based

@@ -191,9 +191,8 @@ derived from a hash of the converted code).
 **Parallel workflow**: don't have each worker convert/compile the
 model independently, and don't point every worker's `mrgsolve.soloc`
 at one shared directory hoping for a cross-worker cache hit -- measured
-directly (`reports/30_simttepower_feedback_worker_loading.md`):
-multiple workers compiling the *same* not-yet-built model into a
-shared directory at the same moment fails intermittently, and even
+directly: multiple workers compiling the *same* not-yet-built model
+into a shared directory at the same moment fails intermittently, and even
 after it is fully built, a worker *re-compiling* it against that
 shared directory a second time still can. Convert the model once (in
 the parent, or however many times you like sequentially), call

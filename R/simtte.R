@@ -207,6 +207,9 @@
 #'   \code{\link{add_interval_censoring}}, to map its output onto an
 #'   assessment-time interval (call \code{add_censoring()} first, if
 #'   using both).
+#'   \code{\link{sim_tte_ode}}, section "Simulating from a Cox model",
+#'   to simulate proportional-hazards (Cox-model) data from a flexible
+#'   M-spline baseline hazard.
 #' @export
 #' @examples
 #' # Fast Weibull example with a small dataset

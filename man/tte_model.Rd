@@ -57,12 +57,22 @@ reusing one \code{name} for genuinely different \code{hazard}/
 \code{params} content called in quick succession.}
 
 \item{bsv_targets}{Character vector or \code{NULL} (default): the
-parameter names \code{\link{sim_tte_ode}}'s \code{omega} argument
-may target via its per-subject-\code{idata} route. Ignored (with a
-\code{message()}) if \code{model} already declares its own
-\code{$OMEGA} block -- that model already has a working BSV route
-(\code{\link[mrgsolve]{omat}}), and the two never combine for the
-same model.}
+  parameter names \code{\link{sim_tte_ode}}'s \code{omega} argument
+  may target via its per-subject-\code{idata} route. Ignored (with a
+  \code{message()}) if \code{model} already declares its own
+  \code{$OMEGA} block -- that model already has a working BSV route
+  (\code{\link[mrgsolve]{omat}}), and the two never combine for the
+  same model.
+
+The compiled model is built into \code{\link{simtte_model_cache}}
+(never a global \code{mrgsolve} option). \strong{Using the result in
+a separate process} (a cluster worker, a chunked/array job task --
+see \code{?sim_tte_ode} "Parallel simulation"): pass this object to
+\code{\link{simtte_prepare_model}} there; it rebuilds from
+\code{$code} automatically if the compiled object this function
+returned does not resolve in that process (its shared object lives
+wherever \emph{this} process's own cache put it), so correctness
+never depends on the two processes sharing a filesystem.}
 }
 \value{
 An object of class \code{"simtte_model"}, a list with

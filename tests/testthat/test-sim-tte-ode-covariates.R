@@ -346,7 +346,13 @@ test_that("a 'data' column named 'lp' conflicting with covariates/beta errors cl
     )
 })
 
-test_that("'data' with an unlabeled (no-ID) dosing row errors, regardless of whether covariates vary by subject", {
+test_that("'data' with an unlabeled (no-ID) dosing row and more than one subject errors, regardless of whether covariates vary by subject", {
+    # For n > 1, .validate_n_against_dosing_data() ("simttepower
+    # feedback 3" Task B) now catches this before the covariates merge
+    # is even reached -- see the n = 1 case below for where
+    # .merge_ode_covariate_rows()'s own "must have an 'ID' column"
+    # check (covariates-specific, unconditional on subject count) is
+    # still the one that fires.
     dosing <- data.frame(time = 0, cmt = 1, amt = 100, evid = 1) # no ID
     expect_error(
         sim_tte_ode(model = "pk_hazard",
@@ -354,7 +360,7 @@ test_that("'data' with an unlabeled (no-ID) dosing row errors, regardless of whe
             delta = 1, data = dosing,
             covariates = data.frame(ID = 1:2, time = 0, age = c(50, 90)),
             beta = c(age = 0.01), seed = 1),
-        "must have an 'ID' column"
+        "'data' has no 'ID' column"
     )
     expect_error(
         sim_tte_ode(model = "pk_hazard",
@@ -362,16 +368,48 @@ test_that("'data' with an unlabeled (no-ID) dosing row errors, regardless of whe
             delta = 1, data = dosing,
             covariates = data.frame(time = 0, age = 60),
             beta = c(age = 0.01), seed = 1),
+        "'data' has no 'ID' column"
+    )
+})
+
+test_that("'data' with an unlabeled (no-ID) dosing row and exactly one subject still hits covariates' own 'must have an ID column' check", {
+    dosing <- data.frame(time = 0, cmt = 1, amt = 100, evid = 1) # no ID
+    expect_error(
+        sim_tte_ode(model = "pk_hazard",
+            param = .PKPD_TEST_DEFAULT_PARAM$pk_hazard, n = 1, end = 10,
+            delta = 1, data = dosing,
+            covariates = data.frame(time = 0, age = 60),
+            beta = c(age = 0.01), seed = 1),
         "must have an 'ID' column"
     )
 })
 
-test_that("'data' with an ID not present in covariates errors", {
+test_that("'data' with a single ID not covering the resolved n errors (n/data-count check, 'simttepower feedback 3' Task B)", {
     dosing <- data.frame(ID = 3, time = 0, cmt = 1, amt = 100, evid = 1)
     expect_error(
         sim_tte_ode(model = "pk_hazard",
             param = .PKPD_TEST_DEFAULT_PARAM$pk_hazard, n = 2, end = 10,
             delta = 1, data = dosing,
+            covariates = data.frame(ID = 1:2, time = 0, age = c(50, 60)),
+            beta = c(age = 0.01), seed = 1),
+        "'n' \\(2\\) does not match"
+    )
+})
+
+test_that("'data' using idata's own (non-default) ID values, not covariates' 1:n-positional ones, still hits covariates' own check", {
+    # covariates$ID must equal 1:nrow(idata) exactly regardless of
+    # idata's own ID values (documented Limitation, ?sim_tte_ode
+    # "Covariates and the linear predictor") -- so cov_rows is keyed
+    # 1:2, not idata's real 101/102, even though 'data' below is
+    # otherwise fully consistent with idata (both subjects dosed, no
+    # unknown ID) and so passes the n/data-count check above cleanly.
+    idata <- data.frame(ID = c(101, 102))
+    dosing <- data.frame(ID = c(101, 102), time = 0, cmt = 1, amt = 100,
+        evid = 1)
+    expect_error(
+        sim_tte_ode(model = "pk_hazard",
+            param = .PKPD_TEST_DEFAULT_PARAM$pk_hazard, idata = idata,
+            end = 10, delta = 1, data = dosing,
             covariates = data.frame(ID = 1:2, time = 0, age = c(50, 60)),
             beta = c(age = 0.01), seed = 1),
         "not present in 'covariates'"

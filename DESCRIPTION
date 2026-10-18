@@ -27,6 +27,7 @@ Imports:
     mrgsolve,
     tools
 Suggests:
+    callr,
     testthat (>= 3.0.0),
     knitr,
     pkgload,
