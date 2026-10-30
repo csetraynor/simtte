@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../simtte-publication"
+		},
+		{
+			"path": "../simtte_postcard"
+		},
+		{
+			"path": "../simttepower"
+		},
+		{
+			"path": "../simtte-examples"
+		}
+	],
+	"settings": {}
+}

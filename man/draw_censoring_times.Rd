@@ -41,6 +41,8 @@ draw_censoring_times(list(dist = "exponential", rate = 0.05), n = 10,
   seed = 1)
 }
 \seealso{
-\code{\link{add_censoring}}, \code{\link{visit_schedule_informative}},
-  the two callers of this same distribution spec shape.
+\code{\link{add_censoring}} and
+  \code{\link{visit_schedule_informative}}, the two functions that use
+  this same spec shape internally; \code{\link{censoring_rate_for}},
+  to choose a spec's rate for a target censoring fraction.
 }

@@ -10,9 +10,12 @@
 #' output of \code{\link{sim_tte_ode}}, \code{\link{sim_tte}}, or
 #' \code{\link{sim_tte_df}} alike, same as \code{\link{add_censoring}}.
 #'
-#' @param events Data frame with (by default) \code{ID}, \code{sim_time},
-#'   \code{sim_status} columns -- column names are configurable via
-#'   \code{id_var}/\code{time_var}/\code{status_var}. Every other column
+#' @param events Data frame of simulated outcomes: typically the
+#'   \code{$events} element returned by \code{\link{sim_tte_ode}}, or the
+#'   output of \code{\link{sim_tte}}/\code{\link{sim_tte_df}}, optionally
+#'   after \code{\link{add_censoring}}. Needs \code{ID}, \code{sim_time},
+#'   \code{sim_status} columns by default (rename via
+#'   \code{id_var}/\code{time_var}/\code{status_var}). Every other column
 #'   is left untouched, and so are these three: this function only adds
 #'   \code{sim_time_left}/\code{sim_time_right} (see "Return" below).
 #' @param visits A visit schedule, either:
@@ -41,9 +44,9 @@
 #'     an event that occurred after the subject's last visit and so was
 #'     never confirmed by the schedule -- \code{sim_status} still reads
 #'     \code{1} in that case: the exact columns are the simulation's
-#'     ground truth, unaffected by this mapping; see "Interval
-#'     conventions" in the design report for why this combination is
-#'     intentional, not an inconsistency).}
+#'     ground truth, unaffected by this mapping. The two columns answer
+#'     different questions: \code{sim_status} says what happened, the
+#'     bounds say what the schedule could observe).}
 #' }
 #' An event with \code{sim_time_left == 0} (an event before the first
 #' post-baseline visit) \strong{is} a left-censored observation -- the
@@ -71,7 +74,11 @@
 #'
 #' @seealso \code{\link{visit_schedule}}, to build a per-subject
 #'   schedule with fixed spacing and optional jitter;
-#'   \code{\link{add_censoring}}, which should run first.
+#'   \code{\link{thin_visits}}, to drop visits at random (missed visits,
+#'   dropout); \code{\link{visit_schedule_informative}}, for visits that
+#'   react to the simulated outcome. \code{\link{add_censoring}}, which
+#'   should run first. \code{\link{sim_tte_ode}}, which can apply this
+#'   step itself through its \code{visits} argument.
 #' @export
 #' @examples
 #' \donttest{
@@ -279,8 +286,10 @@ visit_schedule <- function(n, every, end, jitter = 0,
 #'   composes with \code{\link{add_censoring}} in either relative order
 #'   (they touch disjoint objects: this function only ever reads/writes
 #'   a visit schedule, never \code{events}).
-#' @seealso \code{\link{visit_schedule}}, \code{\link{visit_schedule_informative}}
-#'   (C2, the outcome-reactive counterpart), \code{\link{add_interval_censoring}}.
+#' @seealso \code{\link{visit_schedule}}, which builds the schedule to
+#'   thin; \code{\link{visit_schedule_informative}}, the
+#'   outcome-reactive counterpart; \code{\link{add_interval_censoring}},
+#'   which takes the thinned schedule as \code{visits}.
 #' @export
 #' @examples
 #' sched <- visit_schedule(n = 20, every = 4, end = 24, seed = 1)
@@ -368,8 +377,10 @@ thin_visits <- function(visits, p_miss = 0, p_dropout = 0, ids = NULL,
 #'   using \code{events[[id_var]]} -- no separate \code{ids} argument
 #'   needed here, unlike \code{\link{thin_visits}}, since \code{events}
 #'   already supplies the ID list).
-#' @param events Data frame with (by default) \code{ID}, \code{sim_time},
-#'   \code{sim_status} columns, \strong{after} any \code{\link{add_censoring}}
+#' @param events Data frame of simulated outcomes (typically the
+#'   \code{$events} element of \code{\link{sim_tte_ode}}) with
+#'   \code{ID}, \code{sim_time}, \code{sim_status} columns by default,
+#'   \strong{after} any \code{\link{add_censoring}}
 #'   call (see "Pipeline position" below) -- column names configurable
 #'   via \code{id_var}/\code{time_var}/\code{status_var}.
 #' @param end Numeric scalar. An unscheduled extra visit
@@ -422,8 +433,11 @@ thin_visits <- function(visits, p_miss = 0, p_dropout = 0, ids = NULL,
 #' \code{\link{add_interval_censoring}}'s own "Ordering with right
 #' censoring" section.
 #'
-#' @seealso \code{\link{thin_visits}} (C1, the non-informative
-#'   counterpart), \code{\link{add_interval_censoring}}.
+#' @seealso \code{\link{visit_schedule}}, which builds the base
+#'   schedule passed as \code{visits}; \code{\link{thin_visits}}, the
+#'   non-informative counterpart; \code{\link{add_interval_censoring}},
+#'   which takes the returned schedule as its \code{visits};
+#'   \code{\link{add_censoring}}, which should run before this.
 #' @export
 #' @examples
 #' \donttest{

@@ -24,8 +24,10 @@ using \code{events[[id_var]]} -- no separate \code{ids} argument
 needed here, unlike \code{\link{thin_visits}}, since \code{events}
 already supplies the ID list).}
 
-\item{events}{Data frame with (by default) \code{ID}, \code{sim_time},
-\code{sim_status} columns, \strong{after} any \code{\link{add_censoring}}
+\item{events}{Data frame of simulated outcomes (typically the
+\code{$events} element of \code{\link{sim_tte_ode}}) with
+\code{ID}, \code{sim_time}, \code{sim_status} columns by default,
+\strong{after} any \code{\link{add_censoring}}
 call (see "Pipeline position" below) -- column names configurable
 via \code{id_var}/\code{time_var}/\code{status_var}.}
 
@@ -125,6 +127,9 @@ head(out)
 }
 }
 \seealso{
-\code{\link{thin_visits}} (C1, the non-informative
-  counterpart), \code{\link{add_interval_censoring}}.
+\code{\link{visit_schedule}}, which builds the base
+  schedule passed as \code{visits}; \code{\link{thin_visits}}, the
+  non-informative counterpart; \code{\link{add_interval_censoring}},
+  which takes the returned schedule as its \code{visits};
+  \code{\link{add_censoring}}, which should run before this.
 }

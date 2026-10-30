@@ -7,6 +7,19 @@
 #' pharmacokinetic/pharmacodynamic (PK/PD) model solved via the
 #' \pkg{mrgsolve} backend.
 #'
+#' @section Which functions go together:
+#' The usual chains: \code{\link{tte_model}} (or a name from
+#' \code{\link{sim_tte_ode_models}}) \eqn{\to} \code{\link{sim_tte_ode}}
+#' \eqn{\to} \code{\link{add_censoring}} and/or
+#' \code{\link{add_interval_censoring}}. For visit schedules:
+#' \code{\link{visit_schedule}} \eqn{\to} \code{\link{thin_visits}} or
+#' \code{\link{visit_schedule_informative}} \eqn{\to}
+#' \code{\link{add_interval_censoring}}. For the older closed-form path:
+#' \code{\link{sim_tte}} or \code{\link{sim_tte_df}}, with
+#' \code{\link{explore_pi_tq_surv}} for exploration. In parallel or
+#' multi-process runs, \code{\link{simtte_prepare_model}} wraps the model
+#' step on each worker.
+#'
 #' @section Joint PK/PD and time-to-event simulation:
 #' \code{\link{sim_tte_ode}} locates each subject's event time directly
 #' during ODE integration ("in-solver" event detection): the survival

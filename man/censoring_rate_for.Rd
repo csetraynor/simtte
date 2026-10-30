@@ -81,5 +81,9 @@ mean(out$sim_reason == "censored") # close to 0.2, on the events subset
 }
 }
 \seealso{
-\code{\link{add_censoring}}.
+\code{\link{add_censoring}}, which takes the solved
+  parameter in its \code{censoring} list;
+  \code{\link{draw_censoring_times}}, to check the draws directly;
+  \code{\link{sim_tte_ode}}, whose uncensored \code{$events} supply
+  \code{times}.
 }

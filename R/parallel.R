@@ -100,10 +100,11 @@
 #' anyway, so there is exactly one code path to reason about, not two.
 #'
 #' @return Character scalar: an existing, writable directory path.
-#' @seealso \code{\link{simtte_prepare_model}}, which uses this as
-#'   \pkg{mrgsolve}'s \code{soloc}. \code{\link{simtte_model_cache_clear}},
-#'   to remove what this builds up. \code{?sim_tte_ode} "Parallel
-#'   simulation" for the intended cluster-init pattern.
+#' @seealso \code{\link{simtte_prepare_model}}, which builds into this
+#'   directory (as \pkg{mrgsolve}'s \code{soloc}).
+#'   \code{\link{simtte_model_cache_clear}}, to remove what accumulates
+#'   here. \code{\link{sim_tte_ode}} and \code{\link{tte_model}} also
+#'   build into it; see "Parallel simulation" in \code{?sim_tte_ode}.
 #' @export
 #' @examples
 #' simtte_model_cache()
@@ -312,10 +313,12 @@ simtte_model_cache <- function() {
 #'   affect what gets built.
 #' @return An object of class \code{"simtte_prepared_model"}. Pass it
 #'   directly as \code{\link{sim_tte_ode}}'s own \code{model} argument.
-#' @seealso \code{\link{simtte_model_cache}}, where the compiled model
-#'   is stored (and \code{\link{simtte_model_cache_clear}}, to remove
-#'   it). \code{?sim_tte_ode} "Parallel simulation" for the full
-#'   cluster-init pattern.
+#' @seealso \code{\link{sim_tte_ode}}, which takes the returned object
+#'   as \code{model} (see "Parallel simulation" there for the full
+#'   cluster-init pattern). \code{\link{tte_model}}, which builds the
+#'   \code{simtte_model} to pass in for your own model.
+#'   \code{\link{simtte_model_cache}}, where the compiled model is
+#'   stored, and \code{\link{simtte_model_cache_clear}}, to remove it.
 #' @export
 #' @examples
 #' \donttest{
@@ -368,7 +371,10 @@ simtte_prepare_model <- function(model, knots = NULL) {
 #'   accumulated subdirectories for versions no longer in use.
 #' @return Character vector of the directory paths actually removed,
 #'   invisibly (\code{character(0)} if there was nothing to remove).
-#' @seealso \code{\link{simtte_model_cache}}, which this clears.
+#' @seealso \code{\link{simtte_model_cache}}, which returns the
+#'   directory this clears. \code{\link{simtte_prepare_model}}, which
+#'   rebuilds a model the next time you call it. \code{\link{sim_tte_ode}},
+#'   which does the same implicitly.
 #' @export
 #' @examples
 #' simtte_model_cache()

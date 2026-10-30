@@ -263,15 +263,15 @@ to prognostic modelling and estimation of treatment effects.
 \doi{10.1002/sim.1203}
 }
 \seealso{
-\code{\link{sim_tte_ode}}, for the in-solver event-detection
-  mechanism (joint PK/PD and time-to-event simulation) this function
-  does not implement. \code{\link{add_censoring}}, to apply
-  independent right censoring to this function's output (no argument
-  here for that -- call it directly on the returned data frame).
-  \code{\link{add_interval_censoring}}, to map its output onto an
-  assessment-time interval (call \code{add_censoring()} first, if
-  using both).
-  \code{\link{sim_tte_ode}}, section "Simulating from a Cox model",
-  to simulate proportional-hazards (Cox-model) data from a flexible
-  M-spline baseline hazard.
+\code{\link{sim_tte_df}}, which turns any \code{(ID, time,
+  p11)} trajectory, including one from your own \pkg{mrgsolve} model,
+  into event times. \code{\link{sim_tte_ode}}, for joint PK/PD and
+  time-to-event simulation with in-solver event detection (also the
+  route for Cox-model data; see its "Simulating from a Cox model"
+  section). \code{\link{add_censoring}}, to add independent right
+  censoring to this function's output (call it directly on the returned
+  data frame; there is no argument here for it), then
+  \code{\link{add_interval_censoring}}, to map the result onto an
+  assessment-time interval. \code{\link{explore_pi_tq_surv}}, to see
+  how the prognostic index moves survival before simulating.
 }

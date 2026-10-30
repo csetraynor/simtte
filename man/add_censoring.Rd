@@ -15,8 +15,11 @@ add_censoring(
 )
 }
 \arguments{
-\item{events}{Data frame with (by default) \code{ID}, \code{sim_time},
-\code{sim_status} columns -- column names are configurable via
+\item{events}{Data frame of simulated outcomes: typically the
+\code{$events} element returned by \code{\link{sim_tte_ode}}, or the
+output of \code{\link{sim_tte}}/\code{\link{sim_tte_df}}. Needs
+\code{ID}, \code{sim_time}, \code{sim_status} columns by default --
+column names are configurable via
 \code{id_var}/\code{time_var}/\code{status_var} for a data frame
 using different names. Any other column is left untouched.}
 
@@ -101,7 +104,10 @@ table(out2$sim_reason)
 }
 }
 \seealso{
-\code{\link{censoring_rate_for}}, to choose \code{rate}/
+\code{\link{sim_tte_ode}}, whose \code{$events} this usually
+  post-processes (or pass its \code{censoring} argument to do this in
+  one call); \code{\link{add_interval_censoring}}, the next step if
+  you also need assessment intervals. \code{\link{censoring_rate_for}}, to choose \code{rate}/
   \code{scale} for a target censoring fraction; \code{\link{draw_censoring_times}},
   to draw from the same \code{censoring}-shaped spec directly, with no
   \code{events} data frame needed; the "Right censoring" section of

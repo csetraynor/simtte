@@ -68,8 +68,9 @@ anyway, so there is exactly one code path to reason about, not two.
 simtte_model_cache()
 }
 \seealso{
-\code{\link{simtte_prepare_model}}, which uses this as
-  \pkg{mrgsolve}'s \code{soloc}. \code{\link{simtte_model_cache_clear}},
-  to remove what this builds up. \code{?sim_tte_ode} "Parallel
-  simulation" for the intended cluster-init pattern.
+\code{\link{simtte_prepare_model}}, which builds into this
+  directory (as \pkg{mrgsolve}'s \code{soloc}).
+  \code{\link{simtte_model_cache_clear}}, to remove what accumulates
+  here. \code{\link{sim_tte_ode}} and \code{\link{tte_model}} also
+  build into it; see "Parallel simulation" in \code{?sim_tte_ode}.
 }

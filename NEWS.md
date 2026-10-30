@@ -141,6 +141,13 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
 
 ## Improvements
 
+* **Documentation cross-links related functions and clarifies parameters.**
+  Every exported function's help page now links the functions it is
+  normally used with and says why (for example `tte_model()` before
+  `sim_tte_ode()`, then `add_censoring()` / `add_interval_censoring()`),
+  `?simtte` gains a short "Which functions go together" section, and the
+  `model`, `events` and `name` arguments say where their values come from.
+  No behaviour change.
 * **New `event_time_method` argument** on `sim_tte_df()` and `sim_tte()`,
   with two values:
   * `"grid"` (the default, unchanged): the event time is the first

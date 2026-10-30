@@ -20,3 +20,4 @@
 ^.*\.Rcheck$
 ^tests/testthat/_snaps$
 ^Rplots\.pdf$
+^.*\.code-workspace$

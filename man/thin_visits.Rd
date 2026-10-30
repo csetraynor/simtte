@@ -54,6 +54,8 @@ thinned <- thin_visits(sched, p_miss = 0.1, p_dropout = 0.05, seed = 2)
 nrow(thinned) <= nrow(sched)
 }
 \seealso{
-\code{\link{visit_schedule}}, \code{\link{visit_schedule_informative}}
-  (C2, the outcome-reactive counterpart), \code{\link{add_interval_censoring}}.
+\code{\link{visit_schedule}}, which builds the schedule to
+  thin; \code{\link{visit_schedule_informative}}, the
+  outcome-reactive counterpart; \code{\link{add_interval_censoring}},
+  which takes the thinned schedule as \code{visits}.
 }

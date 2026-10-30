@@ -183,11 +183,12 @@ result2 <- sim_tte_df(mock_dat2, surv_var = "surv",
 head(result2)
 }
 \seealso{
-\code{\link{sim_tte_ode}}, for the in-solver event-detection
-  mechanism (joint PK/PD and time-to-event simulation) this function
-  does not implement. \code{\link{add_censoring}}, to apply
-  independent right censoring to this function's output.
-  \code{\link{add_interval_censoring}}, to map its output onto an
-  assessment-time interval (call \code{add_censoring()} first, if
-  using both).
+\code{\link{sim_tte}}, which builds the Weibull or M-spline
+  trajectory this function consumes. \code{\link{simtte_example_model}}
+  loads a bundled \pkg{mrgsolve} model whose simulated \code{p11}
+  trajectory can be passed as \code{dat}.
+  \code{\link{sim_tte_ode}}, for in-solver event detection with no
+  separate trajectory step. \code{\link{add_censoring}} and
+  \code{\link{add_interval_censoring}}, to post-process this
+  function's output (call \code{add_censoring()} first if using both).
 }

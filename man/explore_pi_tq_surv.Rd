@@ -76,6 +76,7 @@ plot(survdiff_tq ~ lp, data = data_sim2)
 }
 \seealso{
 \code{\link{sim_tte}}, the closed-form engine this function
-  diagnoses; \code{\link{sim_tte_df}}, for the underlying
-  trajectory-to-event mechanism.
+  diagnoses, and the function to call once you have picked \code{pi},
+  \code{mu} and \code{shape}; \code{\link{sim_tte_df}}, for the
+  underlying trajectory-to-event mechanism.
 }

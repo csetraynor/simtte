@@ -9,8 +9,11 @@
 #' or \code{\link{sim_tte_df}} alike -- all three already share the same
 #' \code{ID}/\code{sim_time}/\code{sim_status} shape.
 #'
-#' @param events Data frame with (by default) \code{ID}, \code{sim_time},
-#'   \code{sim_status} columns -- column names are configurable via
+#' @param events Data frame of simulated outcomes: typically the
+#'   \code{$events} element returned by \code{\link{sim_tte_ode}}, or the
+#'   output of \code{\link{sim_tte}}/\code{\link{sim_tte_df}}. Needs
+#'   \code{ID}, \code{sim_time}, \code{sim_status} columns by default --
+#'   column names are configurable via
 #'   \code{id_var}/\code{time_var}/\code{status_var} for a data frame
 #'   using different names. Any other column is left untouched.
 #' @param censoring A list describing the censoring-time distribution,
@@ -62,7 +65,10 @@
 #'   \code{end} and the subject is not an event). Every other column of
 #'   \code{events} is returned unchanged.
 #'
-#' @seealso \code{\link{censoring_rate_for}}, to choose \code{rate}/
+#' @seealso \code{\link{sim_tte_ode}}, whose \code{$events} this usually
+#'   post-processes (or pass its \code{censoring} argument to do this in
+#'   one call); \code{\link{add_interval_censoring}}, the next step if
+#'   you also need assessment intervals. \code{\link{censoring_rate_for}}, to choose \code{rate}/
 #'   \code{scale} for a target censoring fraction; \code{\link{draw_censoring_times}},
 #'   to draw from the same \code{censoring}-shaped spec directly, with no
 #'   \code{events} data frame needed; the "Right censoring" section of
@@ -171,7 +177,11 @@ add_censoring <- function(events, censoring, end, id_var = "ID",
 #' @return Numeric scalar: \code{rate} for \code{dist = "exponential"}
 #'   or \code{"gamma"}, \code{scale} for \code{dist = "weibull"},
 #'   \code{meanlog} for \code{dist = "lognormal"}.
-#' @seealso \code{\link{add_censoring}}.
+#' @seealso \code{\link{add_censoring}}, which takes the solved
+#'   parameter in its \code{censoring} list;
+#'   \code{\link{draw_censoring_times}}, to check the draws directly;
+#'   \code{\link{sim_tte_ode}}, whose uncensored \code{$events} supply
+#'   \code{times}.
 #' @export
 #' @examples
 #' \donttest{
@@ -420,8 +430,10 @@ censoring_rate_for <- function(times, target,
 #'   own \code{seed}).
 #' @return Numeric vector of length \code{n}, all finite and
 #'   non-negative.
-#' @seealso \code{\link{add_censoring}}, \code{\link{visit_schedule_informative}},
-#'   the two callers of this same distribution spec shape.
+#' @seealso \code{\link{add_censoring}} and
+#'   \code{\link{visit_schedule_informative}}, the two functions that use
+#'   this same spec shape internally; \code{\link{censoring_rate_for}},
+#'   to choose a spec's rate for a target censoring fraction.
 #' @export
 #' @examples
 #' draw_censoring_times(list(dist = "exponential", rate = 0.05), n = 10,

@@ -59,6 +59,8 @@
 #'   to \code{\link{simtte_example_model}}.
 #' @seealso \code{\link{simtte_example_model}}, to load one;
 #'   \code{\link{sim_tte_df}}, the function these models are for.
+#'   \code{\link{sim_tte_ode_models}} lists the built-in models for
+#'   \code{\link{sim_tte_ode}}, which are a separate set.
 #' @export
 #' @examples
 #' simtte_example_models()
@@ -99,13 +101,16 @@ simtte_example_models <- function() {
 #' sim_tte_df(out[, c("ID", "time", "p11")])
 #' }
 #'
-#' @param name Character scalar. One of \code{\link{simtte_example_models}()}.
+#' @param name Character scalar naming one bundled model; must be an
+#'   element of \code{\link{simtte_example_models}()}.
 #' @param ... Additional arguments passed to
 #'   \code{\link[mrgsolve]{mread_cache}} (for example \code{quiet = TRUE}).
 #'
 #' @return A compiled \pkg{mrgsolve} model object.
 #' @seealso \code{\link{simtte_example_models}}, to list available names;
-#'   \code{\link{sim_tte_df}}, the function these models are for.
+#'   \code{\link{sim_tte_df}}, which turns this model's simulated
+#'   trajectory into event times. To simulate a model of your own with
+#'   \code{\link{sim_tte_ode}}, convert it with \code{\link{tte_model}}.
 #' @export
 #' @examples
 #' \donttest{

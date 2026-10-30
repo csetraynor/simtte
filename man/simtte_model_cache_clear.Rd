@@ -39,5 +39,8 @@ simtte_model_cache()
 simtte_model_cache_clear()
 }
 \seealso{
-\code{\link{simtte_model_cache}}, which this clears.
+\code{\link{simtte_model_cache}}, which returns the
+  directory this clears. \code{\link{simtte_prepare_model}}, which
+  rebuilds a model the next time you call it. \code{\link{sim_tte_ode}},
+  which does the same implicitly.
 }

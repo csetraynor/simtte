@@ -58,4 +58,6 @@ simtte_example_models()
 \seealso{
 \code{\link{simtte_example_model}}, to load one;
   \code{\link{sim_tte_df}}, the function these models are for.
+  \code{\link{sim_tte_ode_models}} lists the built-in models for
+  \code{\link{sim_tte_ode}}, which are a separate set.
 }

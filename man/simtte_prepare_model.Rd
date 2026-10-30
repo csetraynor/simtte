@@ -92,8 +92,10 @@ head(sim$events)
 }
 }
 \seealso{
-\code{\link{simtte_model_cache}}, where the compiled model
-  is stored (and \code{\link{simtte_model_cache_clear}}, to remove
-  it). \code{?sim_tte_ode} "Parallel simulation" for the full
-  cluster-init pattern.
+\code{\link{sim_tte_ode}}, which takes the returned object
+  as \code{model} (see "Parallel simulation" there for the full
+  cluster-init pattern). \code{\link{tte_model}}, which builds the
+  \code{simtte_model} to pass in for your own model.
+  \code{\link{simtte_model_cache}}, where the compiled model is
+  stored, and \code{\link{simtte_model_cache_clear}}, to remove it.
 }

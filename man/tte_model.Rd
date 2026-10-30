@@ -100,6 +100,10 @@ shipped backbones. See \code{vignette("bring-your-own-model", package
 name-collision policy) and worked examples.
 }
 \details{
+Call this first, then pass the result to \code{\link{sim_tte_ode}}
+as its \code{model} argument. In a parallel or multi-process run, run
+the result through \code{\link{simtte_prepare_model}} on each worker.
+
 Nothing in the input model is edited in place except its
 \code{$GLOBAL}/\code{$MAIN} blocks (both singleton in \pkg{mrgsolve};
 every other addition -- a new \code{$PARAM}, \code{$INIT}, an
@@ -124,6 +128,10 @@ head(sim$events)
 }
 }
 \seealso{
-\code{\link{sim_tte_ode}}, which accepts this function's
-  return value directly as its \code{model} argument.
+\code{\link{sim_tte_ode}}, which takes this function's
+  return value as its \code{model} argument and runs the simulation.
+  \code{\link{sim_tte_ode_models}}, if a built-in model already fits
+  and no conversion is needed. \code{\link{simtte_prepare_model}}, to
+  make the converted model usable in another R process;
+  \code{\link{simtte_model_cache}} shows where it is compiled.
 }

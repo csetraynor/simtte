@@ -13,9 +13,12 @@ add_interval_censoring(
 )
 }
 \arguments{
-\item{events}{Data frame with (by default) \code{ID}, \code{sim_time},
-\code{sim_status} columns -- column names are configurable via
-\code{id_var}/\code{time_var}/\code{status_var}. Every other column
+\item{events}{Data frame of simulated outcomes: typically the
+\code{$events} element returned by \code{\link{sim_tte_ode}}, or the
+output of \code{\link{sim_tte}}/\code{\link{sim_tte_df}}, optionally
+after \code{\link{add_censoring}}. Needs \code{ID}, \code{sim_time},
+\code{sim_status} columns by default (rename via
+\code{id_var}/\code{time_var}/\code{status_var}). Every other column
 is left untouched, and so are these three: this function only adds
 \code{sim_time_left}/\code{sim_time_right} (see "Return" below).}
 
@@ -47,9 +50,9 @@ subject-ID, event/censoring-time, and status columns of
     an event that occurred after the subject's last visit and so was
     never confirmed by the schedule -- \code{sim_status} still reads
     \code{1} in that case: the exact columns are the simulation's
-    ground truth, unaffected by this mapping; see "Interval
-    conventions" in the design report for why this combination is
-    intentional, not an inconsistency).}
+    ground truth, unaffected by this mapping. The two columns answer
+    different questions: \code{sim_status} says what happened, the
+    bounds say what the schedule could observe).}
 }
 An event with \code{sim_time_left == 0} (an event before the first
 post-baseline visit) \strong{is} a left-censored observation -- the
@@ -99,5 +102,9 @@ head(out)
 \seealso{
 \code{\link{visit_schedule}}, to build a per-subject
   schedule with fixed spacing and optional jitter;
-  \code{\link{add_censoring}}, which should run first.
+  \code{\link{thin_visits}}, to drop visits at random (missed visits,
+  dropout); \code{\link{visit_schedule_informative}}, for visits that
+  react to the simulated outcome. \code{\link{add_censoring}}, which
+  should run first. \code{\link{sim_tte_ode}}, which can apply this
+  step itself through its \code{visits} argument.
 }

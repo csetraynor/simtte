@@ -199,17 +199,17 @@
 #' \emph{Statistics in Medicine}, 21(15), 2175--2197.
 #' \doi{10.1002/sim.1203}
 #'
-#' @seealso \code{\link{sim_tte_ode}}, for the in-solver event-detection
-#'   mechanism (joint PK/PD and time-to-event simulation) this function
-#'   does not implement. \code{\link{add_censoring}}, to apply
-#'   independent right censoring to this function's output (no argument
-#'   here for that -- call it directly on the returned data frame).
-#'   \code{\link{add_interval_censoring}}, to map its output onto an
-#'   assessment-time interval (call \code{add_censoring()} first, if
-#'   using both).
-#'   \code{\link{sim_tte_ode}}, section "Simulating from a Cox model",
-#'   to simulate proportional-hazards (Cox-model) data from a flexible
-#'   M-spline baseline hazard.
+#' @seealso \code{\link{sim_tte_df}}, which turns any \code{(ID, time,
+#'   p11)} trajectory, including one from your own \pkg{mrgsolve} model,
+#'   into event times. \code{\link{sim_tte_ode}}, for joint PK/PD and
+#'   time-to-event simulation with in-solver event detection (also the
+#'   route for Cox-model data; see its "Simulating from a Cox model"
+#'   section). \code{\link{add_censoring}}, to add independent right
+#'   censoring to this function's output (call it directly on the returned
+#'   data frame; there is no argument here for it), then
+#'   \code{\link{add_interval_censoring}}, to map the result onto an
+#'   assessment-time interval. \code{\link{explore_pi_tq_surv}}, to see
+#'   how the prognostic index moves survival before simulating.
 #' @export
 #' @examples
 #' # Fast Weibull example with a small dataset
@@ -472,13 +472,14 @@ sim_tte <- function(pi, log_pi = TRUE, mu = -3, coefs = 0, basis = NULL,
 #' bug; \code{sim_tte_df()} does not currently use per-subject or
 #' per-ID RNG streams.
 #'
-#' @seealso \code{\link{sim_tte_ode}}, for the in-solver event-detection
-#'   mechanism (joint PK/PD and time-to-event simulation) this function
-#'   does not implement. \code{\link{add_censoring}}, to apply
-#'   independent right censoring to this function's output.
-#'   \code{\link{add_interval_censoring}}, to map its output onto an
-#'   assessment-time interval (call \code{add_censoring()} first, if
-#'   using both).
+#' @seealso \code{\link{sim_tte}}, which builds the Weibull or M-spline
+#'   trajectory this function consumes. \code{\link{simtte_example_model}}
+#'   loads a bundled \pkg{mrgsolve} model whose simulated \code{p11}
+#'   trajectory can be passed as \code{dat}.
+#'   \code{\link{sim_tte_ode}}, for in-solver event detection with no
+#'   separate trajectory step. \code{\link{add_censoring}} and
+#'   \code{\link{add_interval_censoring}}, to post-process this
+#'   function's output (call \code{add_censoring()} first if using both).
 #' @export
 #' @examples
 #' # Create a mock survival probability data frame (no mrgsolve required)
@@ -806,8 +807,9 @@ sim_tte_df <- function(dat,
 #'   \code{survdiff_tq}, and model parameters.
 #'
 #' @seealso \code{\link{sim_tte}}, the closed-form engine this function
-#'   diagnoses; \code{\link{sim_tte_df}}, for the underlying
-#'   trajectory-to-event mechanism.
+#'   diagnoses, and the function to call once you have picked \code{pi},
+#'   \code{mu} and \code{shape}; \code{\link{sim_tte_df}}, for the
+#'   underlying trajectory-to-event mechanism.
 #' @export
 #' @examples
 #' # Small fast example

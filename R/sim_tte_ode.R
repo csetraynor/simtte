@@ -9,6 +9,13 @@
 #' times \emph{after} the fact from an already-materialized trajectory --
 #' the two are separate code paths, not two modes of one function.
 #'
+#' Typical order of use: pick a model (a built-in name from
+#' \code{\link{sim_tte_ode_models}}, or convert your own \pkg{mrgsolve}
+#' model with \code{\link{tte_model}} first), call this function, then
+#' optionally post-process the \code{$events} it returns with
+#' \code{\link{add_censoring}} and \code{\link{add_interval_censoring}}
+#' (or pass \code{censoring}/\code{visits} to do both in this call).
+#'
 #' The sections below follow one reading order: the mechanism itself
 #' ("Boundary guard", "Event-time refinement"), then what varies by
 #' \code{model} ("Weibull shape support", "M-spline knot-count
@@ -33,14 +40,16 @@
 #' programmatically. A bare compiled
 #' \code{mrgmod} is not accepted directly; convert it first.
 #'
-#' @param model Character string naming a bundled library model
-#'   (\code{"exponential"}, \code{"weibull"}, \code{"gompertz"},
-#'   \code{"mspline"}, \code{"pk_hazard"}, \code{"irm1_hazard"},
-#'   \code{"irm2_hazard"}, \code{"irm3_hazard"}, \code{"irm4_hazard"},
-#'   \code{"tmdd_hazard"}), or a \code{simtte_model} produced by
-#'   \code{\link{tte_model}}. A bare compiled \code{mrgmod}
-#'   (not wrapped in a \code{simtte_model}) is not accepted directly --
-#'   convert it first with \code{\link{tte_model}}.
+#' @param model What to simulate. One of: a character name from
+#'   \code{\link{sim_tte_ode_models}()} (\code{"exponential"},
+#'   \code{"weibull"}, \code{"gompertz"}, \code{"mspline"},
+#'   \code{"pk_hazard"}, \code{"irm1_hazard"}--\code{"irm4_hazard"},
+#'   \code{"tmdd_hazard"}); a \code{"simtte_model"} returned by
+#'   \code{\link{tte_model}} (your own converted \pkg{mrgsolve} model);
+#'   or the \code{"simtte_prepared_model"} returned by
+#'   \code{\link{simtte_prepare_model}}, for parallel or multi-process
+#'   use. A bare compiled \code{mrgmod} is not accepted: convert it with
+#'   \code{\link{tte_model}} first.
 #' @param param Named list or named numeric vector of population-level
 #'   \code{$PARAM} overrides, forwarded to \code{\link[mrgsolve]{param}}.
 #'   \code{U} and \code{END} are ordinarily supplied per subject via
@@ -653,17 +662,21 @@
 #' \code{options()} themselves -- \code{mrgsolve.project}/\code{mrgsolve.soloc}
 #' are passed explicitly, never set globally on your behalf.
 #'
-#' @seealso \code{\link{sim_tte}}, \code{\link{sim_tte_df}}, for the
-#'   grid-based mechanism this function does not replace.
-#'   \code{\link{tte_model}}, to bring in a user-supplied PK/PD model.
-#'   \code{\link{simtte_prepare_model}}, \code{\link{simtte_model_cache}},
-#'   \code{\link{simtte_model_cache_clear}}, for parallel simulation (see
-#'   "Parallel simulation" above).
-#'   \code{\link{add_censoring}}, the function \code{censoring} calls
-#'   internally (usable standalone, and on \code{sim_tte()}/
-#'   \code{sim_tte_df()} output too). \code{\link{add_interval_censoring}}/
-#'   \code{\link{visit_schedule}}, the functions \code{visits} calls
-#'   internally.
+#' @seealso Choosing a model: \code{\link{sim_tte_ode_models}} lists the
+#'   built-in names; \code{\link{tte_model}} converts your own
+#'   \pkg{mrgsolve} model into something \code{model} accepts.
+#'   Post-processing the returned \code{$events}:
+#'   \code{\link{add_censoring}} for independent right censoring (what
+#'   \code{censoring} calls internally; \code{\link{censoring_rate_for}}
+#'   helps choose its rate) and \code{\link{add_interval_censoring}} for
+#'   assessment-time intervals (what \code{visits} calls; build the
+#'   schedule with \code{\link{visit_schedule}}).
+#'   Parallel or multi-process runs: \code{\link{simtte_prepare_model}}
+#'   builds a model once per process, \code{\link{simtte_model_cache}}
+#'   says where it is stored, and \code{\link{simtte_model_cache_clear}}
+#'   removes it (see "Parallel simulation" above).
+#'   The older grid-based engine: \code{\link{sim_tte}} and
+#'   \code{\link{sim_tte_df}}, which this function does not replace.
 #' @export
 #' @examples
 #' \donttest{
@@ -890,8 +903,11 @@ print.simtte_ode_sim <- function(x, ...) {
 #'   passable to \code{sim_tte_ode(model = ...)}), \code{bsv_targets}
 #'   (character, comma-separated valid \code{omega} target names, or
 #'   \code{NA} when the model takes no \code{omega} at all).
-#' @seealso \code{\link{sim_tte_ode}}, \code{\link{tte_model}}, to bring
-#'   in a model beyond this list.
+#' @seealso \code{\link{sim_tte_ode}}, where these names go as
+#'   \code{model}. \code{\link{tte_model}}, to bring in a model beyond
+#'   this list. \code{\link{simtte_example_models}} lists a different
+#'   set: editable templates for \code{\link{sim_tte_df}}, not
+#'   \code{sim_tte_ode()} models.
 #' @export
 #' @examples
 #' sim_tte_ode_models()

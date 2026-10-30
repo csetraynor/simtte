@@ -38,6 +38,9 @@ PK/PD parameter for BSV to attach to).
 sim_tte_ode_models()
 }
 \seealso{
-\code{\link{sim_tte_ode}}, \code{\link{tte_model}}, to bring
-  in a model beyond this list.
+\code{\link{sim_tte_ode}}, where these names go as
+  \code{model}. \code{\link{tte_model}}, to bring in a model beyond
+  this list. \code{\link{simtte_example_models}} lists a different
+  set: editable templates for \code{\link{sim_tte_df}}, not
+  \code{sim_tte_ode()} models.
 }
