@@ -7,8 +7,8 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
 
 * **`sim_tte_ode()`: joint PK/PD and time-to-event simulation with
   in-solver event detection.** The survival probability is added to a
-  PK/PD `mrgsolve` model as one more ODE compartment ( `dxdt_p11 = -p11
-  * HAZ`); each subject's event time is located *during* ODE
+  PK/PD `mrgsolve` model as one more ODE compartment `dxdt_p11 = - p11 * HAZ`
+  each subject's event time is located *during* ODE
   integration, at the first internal solver evaluation where `p11`
   falls to or below a per-subject uniform draw `U`, rather than
   resolved afterward from a pre-simulated trajectory (the mechanism
@@ -286,7 +286,7 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
   re-run; every other `sim_tte_ode()`/`sim_tte()` call path is
   untouched. Found and reported by the `simttepower` companion
   package's own integration testing.
-* **`sim_tte_ode()`: a dosing `data` frame whose unique `ID`s don't
+* `sim_tte_ode()`: a dosing `data` frame whose unique `ID`s don't
   exactly match the resolved subject count (`n`/`idata`) now errors
   immediately, naming both numbers, instead of silently dropping
   subjects (`n` too large -- no warning) or failing with `mrgsolve`'s
