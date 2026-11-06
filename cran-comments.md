@@ -1,41 +1,48 @@
-## Summary
+## Submission
 
-This is a patch release (1.0.2) with bug fixes and a package title/description
-update. It has not yet been submitted to CRAN.
+This is an update of simtte from 1.0.2 (on CRAN) to 2.0.0. The maintainer
+is unchanged.
 
-### Bug fixes
+2.0.0 adds in-solver time-to-event simulation (`sim_tte_ode()`,
+`tte_model()`), right and interval censoring, visit schedules, and
+helpers for running simulations in parallel workers. The full list is in
+`NEWS.md`.
 
-* Fixed time-column position bug in `sim_tte_df()`: time is now resolved by
-  column name, not position.
-* Preserved original subject IDs in output (no longer renumbered).
-* Corrected `.get_tte()` to use the conventional `<= U` inverse-transform
-  boundary rule.
-* Added optional `time_var` argument to `sim_tte_df()`.
+The major version number reflects changes to existing `sim_tte()`
+behaviour. They fix bugs in 1.0.2 and change results or checks:
 
-### Title/Description update
+* `time` now sets the output grid. 1.0.2 ignored its spacing.
+* The Weibull survival probability is computed in closed form. 1.0.2
+  was off by up to 0.16 for `shape < 1` at small times.
+* M-spline hazard values are carried forward over the following
+  interval, not backward.
+* `...` rejects `tgrid`, `obsonly`, `nocb`, `carry_out` and `data`, and
+  M-spline inputs and `end_time` are validated more strictly.
 
-Changed the package Title from "Simulate Time-to-Event Data Using Weibull and
-Spline Models" to "Simulate Bespoke Time-to-Event Models Using ODEs", and
-rewrote the Description to frame the package around bespoke ODE-based
-time-to-event models (built-in Weibull/M-spline hazards plus fully custom
-`mrgsolve` ODE systems) rather than Weibull and spline models specifically.
-No functional changes accompany this rewording.
+Each is listed under "Breaking changes" in `NEWS.md` with the remedy.
+No package on CRAN depends on simtte (see below).
 
 ## Test environments
-* local Ubuntu 20.04.6 LTS, R 4.4.2
+
 * local macOS (aarch64, Apple Silicon), R 4.6.0
-* win-builder (R-devel)
 
 ## R CMD check results
 
-0 errors | 0 warnings | 1 note
+`R CMD check --as-cran` on the built source, 2.0.0:
 
-* checking HTML version of manual ... NOTE
-  Skipping checking HTML validation: 'tidy' doesn't look like recent enough HTML Tidy.
+0 errors | 0 warnings | 0 notes
 
-  This NOTE is due to an outdated HTML Tidy on the local check environment and
-  does not reflect an issue with the package. It does not appear on CRAN's check
-  machines or on win-builder.
+## Notes for the reviewer
+
+* simtte compiles `mrgsolve` model code at run time. Compiled models are
+  written under `tempdir()` by default (`simtte_model_cache()`). A
+  persistent location is used only if the user sets
+  `options(simtte.cache_dir = )`.
+
+* Spell checkers may flag "pharmacokinetic" and "pharmacodynamic" in the
+  DESCRIPTION. Both are standard domain terms and are spelled correctly.
 
 ## Downstream dependencies
-None (no reverse dependencies on CRAN).
+
+None. No package on CRAN lists simtte in Depends, Imports, Suggests or
+LinkingTo (checked against the CRAN package database on 2026-11-06).

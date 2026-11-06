@@ -462,7 +462,7 @@ vignette("advanced-usage",           package = "simtte")
 If you use **simtte** in published research, please cite:
 
     Traynor C (2026). simtte: Simulate Bespoke Time-to-Event Models Using
-    ODEs. R package version 1.1.0.
+    ODEs. R package version 2.0.0.
     https://CRAN.R-project.org/package=simtte
 
 ## References

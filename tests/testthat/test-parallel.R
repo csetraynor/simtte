@@ -202,6 +202,41 @@ test_that("simtte_model_cache_clear() refuses to remove a target outside the res
     expect_true(file.exists(escape_file))
 })
 
+test_that(".path_is_under() permits a true child despite mixed separators and case (Windows spelling)", {
+    # The failing win-builder case: backslashes in the tempdir() part,
+    # forward slashes in the appended part. windows = TRUE runs the
+    # Windows branch on every platform.
+    base <- "D:\\temp\\RtmpSGt94G/simtte-model-cache"
+    child <- "d:/TEMP/rtmpsgt94g\\simtte-model-cache/R4.7.0-simtte2.0.0-mrgsolve2.0.1"
+    expect_true(simtte:::.path_is_under(child, base, windows = TRUE))
+    expect_true(simtte:::.path_is_under(paste0(base, "/"), dirname(base),
+        windows = TRUE))
+    # Case differences are not equivalent off Windows.
+    expect_false(simtte:::.path_is_under(child, base, windows = FALSE))
+})
+
+test_that(".path_is_under() still refuses anything outside the base", {
+    base <- "D:\\temp\\RtmpSGt94G/simtte-model-cache"
+    for (windows in c(TRUE, FALSE)) {
+        expect_false(simtte:::.path_is_under(base, base, windows = windows))
+        expect_false(simtte:::.path_is_under(
+            "D:\\temp\\RtmpSGt94G/simtte-model-cache-evil/R4-simtte2-mrgsolve2",
+            base, windows = windows))
+        expect_false(simtte:::.path_is_under("D:/temp/RtmpSGt94G", base,
+            windows = windows))
+        expect_false(simtte:::.path_is_under("D:/elsewhere/simtte-model-cache/x",
+            base, windows = windows))
+    }
+    # A real directory, spelled the platform's own way.
+    root <- file.path(tempdir(), "simtte-path-under")
+    dir.create(file.path(root, "base", "child"), recursive = TRUE)
+    dir.create(file.path(root, "base-evil"), recursive = TRUE)
+    expect_true(simtte:::.path_is_under(file.path(root, "base", "child"),
+        file.path(root, "base")))
+    expect_false(simtte:::.path_is_under(file.path(root, "base-evil"),
+        file.path(root, "base")))
+})
+
 test_that("simtte_model_cache_clear() is idempotent on an empty/nonexistent cache", {
     old_opt <- getOption("simtte.cache_dir")
     on.exit(options(simtte.cache_dir = old_opt))

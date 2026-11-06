@@ -129,7 +129,7 @@ simtte_model_cache <- function() {
 #' (matches it, and its own regex form, to decide what "current"/"every
 #' version" means) -- kept as one function so the two never drift apart.
 #'
-#' @return Character scalar, e.g. \code{"R4.3.1-simtte1.1.0-mrgsolve2.0.1"}.
+#' @return Character scalar, e.g. \code{"R4.6.0-simtte2.0.0-mrgsolve2.0.1"}.
 #' @noRd
 .simtte_cache_version_tag <- function() {
     # ("Version-key caveat", simtte_model_cache()'s own docs above):
@@ -346,6 +346,45 @@ simtte_prepare_model <- function(model, knots = NULL) {
             else NULL), class = "simtte_prepared_model")
 }
 
+#' Split a path into normalized components
+#'
+#' One separator convention and, on Windows, one case, so two spellings
+#' of the same location compare equal. \code{.Platform$file.sep} is
+#' \code{"/"} on every platform, but \code{\link[base]{normalizePath}}
+#' returns backslashes on Windows by default, so a string comparison
+#' against \code{file.sep} never matches there.
+#'
+#' @param p Character scalar, a path.
+#' @param windows Logical: fold backslashes and case (default: running
+#'   on Windows). A parameter only so tests can exercise the Windows
+#'   branch on any platform.
+#' @return Character vector of path components, empty ones dropped.
+#' @noRd
+.path_components <- function(p, windows = .Platform$OS.type == "windows") {
+    if (windows) p <- gsub("\\", "/", p, fixed = TRUE)
+    p <- normalizePath(p, winslash = "/", mustWork = FALSE)
+    if (windows) p <- tolower(p)
+    parts <- strsplit(p, "/", fixed = TRUE)[[1]]
+    parts[nzchar(parts)]
+}
+
+#' Is \code{target} a proper descendant of \code{base}?
+#'
+#' Compares whole path components, not string prefixes, so
+#' \code{.../cache-evil} is never a child of \code{.../cache}.
+#'
+#' @param target,base Character scalars, paths.
+#' @param windows See \code{.path_components()}.
+#' @return Logical scalar.
+#' @noRd
+.path_is_under <- function(target, base,
+    windows = .Platform$OS.type == "windows") {
+    t_parts <- .path_components(target, windows)
+    b_parts <- .path_components(base, windows)
+    length(b_parts) > 0L && length(t_parts) > length(b_parts) &&
+        identical(t_parts[seq_along(b_parts)], b_parts)
+}
+
 #' Clear simtte's compiled-model cache
 #'
 #' Removes compiled model artifacts that \code{\link{simtte_prepare_model}}/
@@ -393,10 +432,8 @@ simtte_model_cache_clear <- function(all = FALSE) {
         file.path(base_dir, .simtte_cache_version_tag())
     }
     targets <- targets[dir.exists(targets)]
-    base_norm <- normalizePath(base_dir, mustWork = FALSE)
     for (target in targets) {
-        target_norm <- normalizePath(target, mustWork = FALSE)
-        if (!startsWith(target_norm, paste0(base_norm, .Platform$file.sep))) {
+        if (!.path_is_under(target, base_dir)) {
             stop("simtte_model_cache_clear() refused to remove '", target,
                 "': it does not resolve to a subdirectory of the ",
                 "configured cache base ('", base_dir, "') -- this should ",
