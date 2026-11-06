@@ -9,6 +9,7 @@
 status](https://www.r-pkg.org/badges/version/simtte)](https://CRAN.R-project.org/package=simtte)
 [![CRAN
 downloads](https://cranlogs.r-pkg.org/badges/simtte)](https://CRAN.R-project.org/package=simtte)
+[![R-CMD-check](https://github.com/csetraynor/simtte/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/csetraynor/simtte/actions/workflows/R-CMD-check.yaml)
 [![License: GPL (\>=
 2)](https://img.shields.io/badge/License-GPL%20%28%3E%3D%202%29-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 <!-- badges: end -->
@@ -468,14 +469,12 @@ If you use **simtte** in published research, please cite:
 
 Bender R, Augustin T, Blettner M (2005). Generating survival times to
 simulate Cox proportional hazards models. *Statistics in Medicine*,
-**24**(11), 1713–1723.
-[doi:10.1002/sim.2059](https://doi.org/10.1002/sim.2059)
+**24**(11), 1713–1723. <doi:10.1002/sim.2059>
 
 Royston P, Parmar MKB (2002). Flexible parametric proportional-hazards
 and proportional-odds models for censored survival data, with
 application to prognostic modelling and estimation of treatment effects.
-*Statistics in Medicine*, **21**(15), 2175–2197.
-[doi:10.1002/sim.1203](https://doi.org/10.1002/sim.1203)
+*Statistics in Medicine*, **21**(15), 2175–2197. <doi:10.1002/sim.1203>
 
 ## License
 

@@ -1,7 +1,9 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^README\.Rmd$
+^README\.Rmd-E$
 ^README\.md$
+^README\.md-E$
 ^README\.html$
 ^STATUS\.md$
 ^LICENSE\.md$
