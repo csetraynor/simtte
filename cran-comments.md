@@ -25,12 +25,21 @@ No package on CRAN depends on simtte (see below).
 ## Test environments
 
 * local macOS (aarch64, Apple Silicon), R 4.6.0
+* win-builder, Windows Server 2022 x64 (build 20348), R Under development
+  (unstable) (2026-11-05 r90840 ucrt)
 
 ## R CMD check results
 
-`R CMD check --as-cran` on the built source, 2.0.0:
+Local macOS, `R CMD check --as-cran`: 0 errors | 0 warnings | 0 notes.
 
-0 errors | 0 warnings | 0 notes
+win-builder (R-devel): 0 errors | 0 warnings | 1 note.
+
+* checking CRAN incoming feasibility ... NOTE
+  Possibly misspelled words in DESCRIPTION: pharmacodynamic,
+  pharmacokinetic.
+
+  Both are standard domain terms and are spelled correctly. The
+  DESCRIPTION describes a joint pharmacokinetic/pharmacodynamic model.
 
 ## Notes for the reviewer
 
@@ -38,9 +47,6 @@ No package on CRAN depends on simtte (see below).
   written under `tempdir()` by default (`simtte_model_cache()`). A
   persistent location is used only if the user sets
   `options(simtte.cache_dir = )`.
-
-* Spell checkers may flag "pharmacokinetic" and "pharmacodynamic" in the
-  DESCRIPTION. Both are standard domain terms and are spelled correctly.
 
 ## Downstream dependencies
 
