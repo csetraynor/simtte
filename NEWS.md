@@ -7,7 +7,7 @@ directly, `inst/validation/13_backcompat_v1_0_2.R`).
 
 * **`sim_tte_ode()`: joint PK/PD and time-to-event simulation with
   in-solver event detection.** The survival probability is added to a
-  PK/PD `mrgsolve` model as one more ODE compartment (`dxdt_p11 = -p11
+  PK/PD `mrgsolve` model as one more ODE compartment ( `dxdt_p11 = -p11
   * HAZ`); each subject's event time is located *during* ODE
   integration, at the first internal solver evaluation where `p11`
   falls to or below a per-subject uniform draw `U`, rather than
