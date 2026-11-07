@@ -17,7 +17,9 @@ accumulated subdirectories for versions no longer in use.}
 }
 \value{
 Character vector of the directory paths actually removed,
-  invisibly (\code{character(0)} if there was nothing to remove).
+  invisibly (\code{character(0)} if there was nothing to remove). A
+  directory that could not be fully removed is left out, with a
+  warning naming it.
 }
 \description{
 Removes compiled model artifacts that \code{\link{simtte_prepare_model}}/
@@ -34,6 +36,19 @@ version subdirectories are ever candidates for removal, and each is
 double-checked to actually resolve under the configured base before
 being deleted.
 }
+\section{Windows}{
+
+  Windows cannot delete a file that is open. The compiled file of a
+  model loaded in the current session (by
+  \code{\link{simtte_prepare_model}} or \code{\link{sim_tte_ode}})
+  stays open while it is loaded (normally until R exits), so its
+  directory survives the clear.
+  Everything else in it is removed, including \pkg{mrgsolve}'s cache
+  record, so the next \code{simtte_prepare_model()} still rebuilds the
+  model. Restart R and clear again to remove the remainder. Linux and
+  macOS remove the directory completely.
+}
+
 \examples{
 simtte_model_cache()
 simtte_model_cache_clear()

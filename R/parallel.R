@@ -409,7 +409,19 @@ simtte_prepare_model <- function(model, knots = NULL) {
 #'   mrgsolve upgrade, when a persistent \code{simtte.cache_dir} has
 #'   accumulated subdirectories for versions no longer in use.
 #' @return Character vector of the directory paths actually removed,
-#'   invisibly (\code{character(0)} if there was nothing to remove).
+#'   invisibly (\code{character(0)} if there was nothing to remove). A
+#'   directory that could not be fully removed is left out, with a
+#'   warning naming it.
+#' @section Windows:
+#'   Windows cannot delete a file that is open. The compiled file of a
+#'   model loaded in the current session (by
+#'   \code{\link{simtte_prepare_model}} or \code{\link{sim_tte_ode}})
+#'   stays open while it is loaded (normally until R exits), so its
+#'   directory survives the clear.
+#'   Everything else in it is removed, including \pkg{mrgsolve}'s cache
+#'   record, so the next \code{simtte_prepare_model()} still rebuilds the
+#'   model. Restart R and clear again to remove the remainder. Linux and
+#'   macOS remove the directory completely.
 #' @seealso \code{\link{simtte_model_cache}}, which returns the
 #'   directory this clears. \code{\link{simtte_prepare_model}}, which
 #'   rebuilds a model the next time you call it. \code{\link{sim_tte_ode}},
@@ -441,7 +453,18 @@ simtte_model_cache_clear <- function(all = FALSE) {
         }
         unlink(target, recursive = TRUE)
     }
-    invisible(targets)
+    # unlink() fails silently on a file that is still open, which on
+    # Windows includes the DLL of any model loaded in this session.
+    left <- targets[dir.exists(targets)]
+    if (length(left)) {
+        warning("simtte_model_cache_clear() could not fully remove: ",
+            paste0("'", left, "'", collapse = ", "), ". A model loaded in ",
+            "this session keeps its compiled file open on Windows; the ",
+            "rest of the cache was removed, so the next ",
+            "simtte_prepare_model() still rebuilds. Restart R to remove ",
+            "the remainder.", call. = FALSE)
+    }
+    invisible(setdiff(targets, left))
 }
 
 #' Print a prepared model

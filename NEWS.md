@@ -2,6 +2,10 @@
 
 * The blog post [Driving a hazard from a PK/PD ODE system in simtte](https://csetraynor.github.io/simtte/articles/pkpd-hazard-ode-simulation.html)
   is now an article on the package website.
+* `simtte_model_cache_clear()` warns, and leaves the path out of its
+  return value, when it cannot fully remove a directory. On Windows this
+  happens for a model loaded in the current session, whose compiled file
+  stays open until R exits; see "Windows" in `?simtte_model_cache_clear`.
 
 # simtte 2.0.0
 

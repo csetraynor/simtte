@@ -260,9 +260,20 @@ test_that("after simtte_model_cache_clear(), the next simtte_prepare_model() reb
         end = 10, delta = 2, seed = 1)
 
     cache_dir <- simtte_model_cache()
-    removed <- simtte_model_cache_clear()
-    expect_identical(removed, cache_dir)
-    expect_false(dir.exists(cache_dir))
+    if (.Platform$OS.type == "windows") {
+        # prepared1's DLL is loaded, so Windows keeps it (and its
+        # directory); mrgsolve's cache record must still be gone, which
+        # is what forces the rebuild below.
+        expect_warning(removed <- simtte_model_cache_clear(),
+            "could not fully remove")
+        expect_identical(removed, character(0))
+        expect_length(list.files(cache_dir, "^mrgmod_cache\\.RDS$",
+            recursive = TRUE), 0)
+    } else {
+        removed <- simtte_model_cache_clear()
+        expect_identical(removed, cache_dir)
+        expect_false(dir.exists(cache_dir))
+    }
 
     prepared2 <- simtte_prepare_model("exponential")
     sim2 <- sim_tte_ode(model = prepared2, param = list(H0 = 0.1), n = 5,

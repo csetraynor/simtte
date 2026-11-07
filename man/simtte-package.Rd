@@ -139,6 +139,7 @@ effects. \emph{Statistics in Medicine}, 21(15), 2175-2197.
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://csetraynor.github.io/simtte/}
   \item \url{https://github.com/csetraynor/simtte}
   \item Report bugs at \url{https://github.com/csetraynor/simtte/issues}
 }
