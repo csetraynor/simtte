@@ -1,0 +1,144 @@
+# Getting Started with simtte
+
+## Introduction
+
+The **simtte** package simulates time-to-event (survival) datasets for
+clinical trial design and analysis. It supports:
+
+- **Weibull** parametric survival models
+- **Flexible M-spline** baseline hazard models (Royston-Parmar style)
+
+Event times are generated using **inverse transform sampling** from the
+cumulative hazard function, computed via the **mrgsolve** ODE solver
+backend.
+
+## Statistical Framework
+
+### Weibull Model
+
+The Weibull hazard function is:
+
+``` math
+h(t) = \lambda \cdot \gamma \cdot t^{\gamma - 1}
+```
+
+where $`\lambda = \exp(\mu + \mathbf{x}'\boldsymbol{\beta})`$ is the
+scale and $`\gamma`$ is the shape parameter. The survival function
+$`S(t) =
+\exp(-\lambda t^\gamma)`$ has a closed form, so **simtte** evaluates it
+directly on the reported time grid rather than by numerically
+integrating the survival ODE; this is numerically robust across shape
+and parameter regimes.
+
+### M-Spline Model
+
+For the flexible model, the baseline hazard is represented as a linear
+combination of M-spline basis functions, allowing complex hazard shapes.
+The hazard value reported at a given time applies from that time until
+the next reported time (a last-observation-carried-forward convention),
+giving a piecewise-constant hazard on the reported grid.
+
+### Inverse Transform Sampling
+
+Given a survival function $`S(t)`$ reported on the grid supplied via
+`time`, we draw $`U \sim \text{Uniform}(0, 1)`$ and find the first
+reported time $`t^*`$ such that $`S(t^*) \le U`$
+(`event_time_method = "grid"`, the default). Setting
+`event_time_method = "log_survival"` instead refines a crossing that
+falls strictly between two reported points by linearly interpolating
+cumulative hazard between them; see “Event-Time Interpolation” below.
+
+## Basic Workflow
+
+``` r
+
+library(simtte)
+```
+
+### Weibull Example
+
+``` r
+
+set.seed(42)
+lp <- matrix(rnorm(50, 0, 0.5), nrow = 50)
+result <- sim_tte(
+  pi = lp,
+  mu = -1,
+  coefs = 1.1,
+  time = seq(0.1, 100, by = 0.1),
+  type = "weibull",
+  end_time = 100
+)
+head(result)
+```
+
+### M-Splines Example
+
+``` r
+
+data("ms_data")
+lp <- matrix(runif(nrow(ms_data$basis)), nrow = nrow(ms_data$basis))
+result <- sim_tte(
+  pi = lp,
+  mu = ms_data$mu,
+  basis = ms_data$basis,
+  coefs = ms_data$coefs,
+  time = ms_data$time,
+  type = "ms"
+)
+head(result)
+```
+
+### Event-Time Interpolation
+
+`event_time_method` defaults to `"grid"`, which preserves the original
+grid-based event-time resolution shown above. Setting it to
+`"log_survival"` refines a crossing that falls strictly between two
+reported time points; the underlying survival trajectory is unchanged,
+and so is event/censoring classification for the same seed:
+
+``` r
+
+set.seed(1)
+result_grid <- sim_tte(
+  pi = lp, mu = -1, coefs = 1.1,
+  time = seq(0.1, 100, by = 0.1),
+  type = "weibull", end_time = 100,
+  event_time_method = "grid"           # default
+)
+
+set.seed(1)
+result_interp <- sim_tte(
+  pi = lp, mu = -1, coefs = 1.1,
+  time = seq(0.1, 100, by = 0.1),
+  type = "weibull", end_time = 100,
+  event_time_method = "log_survival"   # sub-grid refinement
+)
+
+# Same seed and trajectory -> identical event/censoring classification.
+identical(result_grid$sim_status, result_interp$sim_status)
+
+# sim_time can differ only where the crossing falls strictly between
+# two reported grid points.
+head(cbind(grid = result_grid$sim_time, log_survival = result_interp$sim_time))
+```
+
+## Output Structure
+
+The output is a data frame with columns:
+
+| Column       | Description                               |
+|--------------|-------------------------------------------|
+| `sim_time`   | Simulated event or censoring time         |
+| `sim_status` | Event indicator (1 = event, 0 = censored) |
+| `ID`         | Subject identifier                        |
+| `lp`         | Linear predictor (log hazard ratio)       |
+
+## References
+
+- Bender R, Augustin T, Blettner M (2005). Generating survival times to
+  simulate Cox proportional hazards models. *Statistics in Medicine*,
+  24(11), 1713-1723.
+- Royston P, Parmar MKB (2002). Flexible parametric proportional-hazards
+  and proportional-odds models for censored survival data. *Statistics
+  in Medicine*, 21(15), 2175-2197.

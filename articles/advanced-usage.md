@@ -1,0 +1,159 @@
+# Advanced Simulation Scenarios
+
+``` r
+
+library(simtte)
+```
+
+## Exploring the Prognostic Index
+
+The
+[`explore_pi_tq_surv()`](https://csetraynor.github.io/simtte/reference/explore_pi_tq_surv.md)
+function allows you to understand how the prognostic index (linear
+predictor) affects survival at a given quantile.
+
+``` r
+
+data_sim <- explore_pi_tq_surv(
+  pi = seq(-3, 3, by = 0.1),
+  mu = -1,
+  shape = seq(0.9, 1.1, by = 0.1),
+  end_time = 200,
+  type = "weibull"
+)
+head(data_sim)
+```
+
+### Visualisation
+
+``` r
+
+library(ggplot2)
+ggplot(data_sim, aes(x = exp(lp), y = survdiff_tq)) +
+  geom_line(aes(color = factor(shape), group = shape)) +
+  scale_x_log10() +
+  labs(
+    x = "Hazard Ratio",
+    y = expression(Delta ~ "Survival at" ~ t[50]),
+    color = "Shape"
+  ) +
+  geom_vline(xintercept = 1, linetype = 2) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  theme_bw()
+```
+
+## Custom mrgsolve Models with sim_tte_df
+
+If you have a custom mrgsolve model that outputs a survival probability
+column, you can use
+[`sim_tte_df()`](https://csetraynor.github.io/simtte/reference/sim_tte_df.md)
+directly to perform inverse transform sampling on the output:
+
+``` r
+
+# Example with a mock survival data frame (no mrgsolve needed)
+set.seed(123)
+mrg_output <- data.frame(
+  ID = rep(1:5, each = 100),
+  time = rep(seq(0.1, 10, length.out = 100), 5),
+  p11 = rep(exp(-0.3 * seq(0.1, 10, length.out = 100)), 5)
+)
+result <- sim_tte_df(mrg_output, surv_var = "p11", id_var = "ID",
+  time_var = "time")
+head(result)
+#> # A tibble: 5 × 3
+#>   sim_time sim_status    ID
+#>      <dbl>      <dbl> <int>
+#> 1      4.2          1     1
+#> 2      0.8          1     2
+#> 3      3            1     3
+#> 4      0.5          1     4
+#> 5      0.3          1     5
+```
+
+## Event-Time Interpolation
+
+[`sim_tte_df()`](https://csetraynor.github.io/simtte/reference/sim_tte_df.md)
+accepts an `event_time_method` argument. `"grid"` (the default, used
+above) resolves the event time as the first reported time at which
+survival falls to or below the sampled uniform draw. Setting
+`event_time_method = "log_survival"` instead refines a crossing that
+falls strictly between two reported points, by linearly interpolating
+cumulative hazard $`H(t) = -\log S(t)`$ between them and solving for the
+time at which $`H(t)`$ equals the target implied by the draw. Linear
+interpolation in $`H`$ is equivalent to assuming the hazard is constant
+between the two reported points surrounding the crossing (a
+piecewise-constant hazard over that interval) — it is model-agnostic and
+does not re-derive or re-fit whatever hazard actually generated the
+trajectory.
+
+Reusing the same mock trajectory, with the same seed so both calls draw
+identical uniform random variates per subject:
+
+``` r
+
+set.seed(7)
+result_grid <- sim_tte_df(mrg_output, event_time_method = "grid")
+
+set.seed(7)
+result_interp <- sim_tte_df(mrg_output, event_time_method = "log_survival")
+
+# Event/censoring classification is identical for the same trajectory
+# and the same random draws -- interpolation only refines *where*
+# within an already-identified interval the event falls.
+identical(result_grid$sim_status, result_interp$sim_status)
+#> [1] TRUE
+
+cbind(
+  ID           = result_grid$ID,
+  status       = result_grid$sim_status,
+  grid         = result_grid$sim_time,
+  log_survival = result_interp$sim_time
+)
+#>      ID status grid log_survival
+#> [1,]  1      1  0.1     0.100000
+#> [2,]  2      1  3.1     3.073143
+#> [3,]  3      1  7.2     7.189246
+#> [4,]  4      1  8.9     8.876189
+#> [5,]  5      1  4.8     4.705382
+```
+
+The two methods agree exactly whenever the crossing already lands on a
+reported time (for example, a first-observation crossing, or a draw that
+exactly matches a reported survival value); `log_survival` reports a
+slightly different time only when the true crossing fell strictly
+between two reported points. For this M-spline-independent mock
+trajectory the hazard varies continuously between reported points, so
+`log_survival` here is an approximation whose accuracy improves as the
+reported `time` grid is refined, not an exact recovery of a
+continuous-time event root. For **simtte**’s built-in M-spline model,
+whose reported hazard is genuinely piecewise-constant between grid
+points, `log_survival` recovers the event time implied by that
+discretized hazard exactly.
+
+## Multiple Treatment Arms
+
+You can simulate different treatment arms by specifying different
+prognostic indices:
+
+``` r
+
+set.seed(42)
+n_per_arm <- 50
+times <- seq(0.1, 50, by = 0.1)
+
+# Control arm
+lp_ctrl <- matrix(rep(0, n_per_arm), nrow = n_per_arm)
+ctrl <- sim_tte(pi = lp_ctrl, mu = -1, coefs = 1.1,
+  time = times, type = "weibull", end_time = 50)
+ctrl$arm <- "Control"
+
+# Treatment arm (lower hazard)
+lp_trt <- matrix(rep(-0.5, n_per_arm), nrow = n_per_arm)
+trt <- sim_tte(pi = lp_trt, mu = -1, coefs = 1.1,
+  time = times, type = "weibull", end_time = 50)
+trt$arm <- "Treatment"
+
+combined <- rbind(ctrl, trt)
+head(combined)
+```
