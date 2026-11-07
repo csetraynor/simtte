@@ -1,0 +1,27 @@
+url: https://csetraynor.github.io/simtte
+
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left: [intro, reference, articles, blog, news]
+    right: [search, github]
+  components:
+    blog:
+      text: Blog
+      href: articles/pkpd-hazard-ode-simulation.html
+
+articles:
+- title: Vignettes
+  navbar: ~
+  contents:
+  - pkpd-time-to-event
+  - bring-your-own-model
+  - censoring-and-assessment
+  - introduction
+  - advanced-usage
+- title: Blog
+  navbar: Blog
+  contents:
+  - articles/pkpd-hazard-ode-simulation

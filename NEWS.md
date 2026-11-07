@@ -1,5 +1,8 @@
 # simtte (development version)
 
+* The blog post [Driving a hazard from a PK/PD ODE system in simtte](https://csetraynor.github.io/simtte/articles/pkpd-hazard-ode-simulation.html)
+  is now an article on the package website.
+
 # simtte 2.0.0
 
 A major release. It adds in-solver time-to-event simulation, censoring and

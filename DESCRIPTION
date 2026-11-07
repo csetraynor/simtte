@@ -35,8 +35,9 @@ Suggests:
     splines2,
     survival
 VignetteBuilder: knitr
-URL: https://github.com/csetraynor/simtte
+URL: https://csetraynor.github.io/simtte/, https://github.com/csetraynor/simtte
 BugReports: https://github.com/csetraynor/simtte/issues
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0
 RoxygenNote: 8.0.0
+Config/Needs/website: rmarkdown
