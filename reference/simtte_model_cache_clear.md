@@ -54,6 +54,6 @@ which does the same implicitly.
 
 ``` r
 simtte_model_cache()
-#> [1] "/tmp/RtmpC1m8gI/simtte-model-cache/R4.6.2-simtte2.0.0.9000-mrgsolve2.0.1"
+#> [1] "/tmp/RtmpRbowND/simtte-model-cache/R4.6.2-simtte2.0.0.9000-mrgsolve2.0.1"
 simtte_model_cache_clear()
 ```
