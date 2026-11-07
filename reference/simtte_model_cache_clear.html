@@ -106,7 +106,23 @@ accumulated subdirectories for versions no longer in use.</p></dd>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>Character vector of the directory paths actually removed,
-  invisibly (<code>character(0)</code> if there was nothing to remove).</p>
+  invisibly (<code>character(0)</code> if there was nothing to remove). A
+  directory that could not be fully removed is left out, with a
+  warning naming it.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="windows">Windows<a class="anchor" aria-label="anchor" href="#windows"></a></h2>
+
+
+<p>Windows cannot delete a file that is open. The compiled file of a
+  model loaded in the current session (by
+  <code><a href="simtte_prepare_model.html">simtte_prepare_model</a></code> or <code><a href="sim_tte_ode.html">sim_tte_ode</a></code>)
+  stays open while it is loaded (normally until R exits), so its
+  directory survives the clear.
+  Everything else in it is removed, including <span class="pkg">mrgsolve</span>'s cache
+  record, so the next <code><a href="simtte_prepare_model.html">simtte_prepare_model()</a></code> still rebuilds the
+  model. Restart R and clear again to remove the remainder. Linux and
+  macOS remove the directory completely.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -119,7 +135,7 @@ accumulated subdirectories for versions no longer in use.</p></dd>
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu"><a href="simtte_model_cache.html">simtte_model_cache</a></span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "/tmp/RtmpRbowND/simtte-model-cache/R4.6.2-simtte2.0.0.9000-mrgsolve2.0.1"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "/tmp/Rtmpvxnpko/simtte-model-cache/R4.6.2-simtte2.0.0.9000-mrgsolve2.0.1"</span>
 <span class="r-in"><span><span class="fu">simtte_model_cache_clear</span><span class="op">(</span><span class="op">)</span></span></span>
 </code></pre></div>
     </div>

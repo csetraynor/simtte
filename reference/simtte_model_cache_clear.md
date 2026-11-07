@@ -39,7 +39,22 @@ simtte_model_cache_clear(all = FALSE)
 ## Value
 
 Character vector of the directory paths actually removed, invisibly
-(`character(0)` if there was nothing to remove).
+(`character(0)` if there was nothing to remove). A directory that could
+not be fully removed is left out, with a warning naming it.
+
+## Windows
+
+Windows cannot delete a file that is open. The compiled file of a model
+loaded in the current session (by
+[`simtte_prepare_model`](https://csetraynor.github.io/simtte/reference/simtte_prepare_model.md)
+or
+[`sim_tte_ode`](https://csetraynor.github.io/simtte/reference/sim_tte_ode.md))
+stays open while it is loaded (normally until R exits), so its directory
+survives the clear. Everything else in it is removed, including
+mrgsolve's cache record, so the next
+[`simtte_prepare_model()`](https://csetraynor.github.io/simtte/reference/simtte_prepare_model.md)
+still rebuilds the model. Restart R and clear again to remove the
+remainder. Linux and macOS remove the directory completely.
 
 ## See also
 
@@ -54,6 +69,6 @@ which does the same implicitly.
 
 ``` r
 simtte_model_cache()
-#> [1] "/tmp/RtmpRbowND/simtte-model-cache/R4.6.2-simtte2.0.0.9000-mrgsolve2.0.1"
+#> [1] "/tmp/Rtmpvxnpko/simtte-model-cache/R4.6.2-simtte2.0.0.9000-mrgsolve2.0.1"
 simtte_model_cache_clear()
 ```

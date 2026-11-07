@@ -153,6 +153,8 @@ application to prognostic modelling and estimation of treatment effects.
 
 Useful links:
 
+- <https://csetraynor.github.io/simtte/>
+
 - <https://github.com/csetraynor/simtte>
 
 - Report bugs at <https://github.com/csetraynor/simtte/issues>
